@@ -1,0 +1,927 @@
+/* ============================================
+   Shresth Masala Industry Management System — CSS
+   Bright, warm-professional theme
+   ============================================ */
+
+:root {
+  /* Surfaces — light gray-blue so white cards stand apart instead of
+     glaring together; cards stay pure white */
+  --color-bg: #e9eef5;
+  --color-bg-2: #dfe7f1;
+  --color-surface: #ffffff;
+  --color-surface-alt: #eef3f9;
+  --color-text: #101a2e;
+  --color-text-muted: #46566e;
+  --color-border: #e2e9f3;
+  --color-border-strong: #cfd9e8;
+
+  /* Brand — vivid teal reads as spice/herb, pairs with saffron accent.
+     Chosen so white button text clears WCAG AA (4.82:1). */
+  --color-primary: #008078;
+  --color-primary-hover: #00746c;
+  --color-primary-soft: #ccfbf1;
+  --color-primary-ring: rgba(0, 128, 120, 0.22);
+  --color-accent: #f59e0b;
+  --color-accent-soft: #fef3c7;
+
+  /* Status */
+  --color-success: #047857;
+  --color-success-soft: #d1fae5;
+  --color-warning: #b45309;
+  --color-warning-soft: #fef3c7;
+  --color-danger: #be123c;
+  --color-danger-soft: #ffe4e6;
+  --color-info: #0369a1;
+  --color-info-soft: #e0f2fe;
+
+  --color-sidebar-top: #0d5c63;
+  --color-sidebar-mid: #0f3d5c;
+  --color-sidebar-bot: #102a43;
+  --color-sidebar-grad: linear-gradient(180deg, #0d5c63 0%, #0f3d5c 55%, #102a43 100%);
+  --color-sidebar-active: rgba(255, 255, 255, 0.14);
+  --color-sidebar-accent: #2dd4bf;
+
+  --shadow-card: 0 1px 2px rgba(16, 26, 46, 0.04), 0 6px 18px rgba(16, 26, 46, 0.06);
+  --shadow-header: 0 1px 3px rgba(16, 26, 46, 0.06);
+  --shadow-raised: 0 10px 28px rgba(16, 26, 46, 0.12);
+  --accent-grad: linear-gradient(90deg, #14b8a6 0%, #0ea5e9 55%, #f59e0b 100%);
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --font-base: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+body {
+  font-family: var(--font-base);
+  background: linear-gradient(180deg, var(--color-bg) 0%, var(--color-bg-2) 100%);
+  background-attachment: fixed;
+  color: var(--color-text);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Layout */
+body { display: flex; min-height: 100vh; }
+
+/* Sidebar */
+.sidebar {
+  width: 252px;
+  background: var(--color-sidebar-grad);
+  color: #eaf2f8;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  z-index: 100;
+  transition: transform 0.25s ease, width 0.2s ease;
+  box-shadow: 4px 0 20px rgba(16, 26, 46, 0.10);
+}
+.sidebar-brand {
+  padding: 20px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-logo {
+  /* The badge is landscape (~1.29:1) with a transparent background, so it is
+     sized by height with the width following. A circular crop (the previous
+     border-radius:50% + object-fit:cover) sliced the gold rim off a landscape
+     source, which is why this is contain in a rounded rectangle. */
+  height: 46px;
+  width: auto;
+  max-width: 150px;
+  object-fit: contain;
+  border-radius: 4px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.28));
+}
+.auth-brand .brand-logo {
+  height: 62px;
+  max-width: 200px;
+}
+.brand-icon {
+  font-size: 28px;
+  line-height: 1;
+  margin-right: 10px;
+}
+.sidebar-brand h2 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: #fff;
+  line-height: 1.25;
+}
+.brand-sub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.62);
+  letter-spacing: 0.2px;
+}
+
+.nav-menu { flex: 1; overflow-y: auto; padding: 16px 8px; }
+.nav-menu ul { list-style: none; }
+.nav-section {
+  font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.45); text-transform: uppercase;
+  padding: 14px 8px 4px;
+}
+.nav-section-toggle {
+  width: 100%; display: flex; justify-content: space-between; align-items: center;
+  background: transparent; border: none; cursor: pointer;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45); padding: 0 8px; font-family: inherit;
+}
+.nav-section-toggle:hover { color: rgba(255, 255, 255, 0.85); }
+.nav-section-toggle .chev { font-size: 14px; font-weight: 400; }
+.nav-menu li.nav-collapsed-child { display: none; }
+.nav-sub-reports { list-style: none; }
+.nav-sub-reports .nav-link { padding-left: 44px; font-size: 13px; }
+.nav-sub-new { opacity: 0.85; font-style: italic; }
+.nav-mini-btn {
+  background: transparent; border: none; cursor: pointer;
+  color: rgba(255, 255, 255, 0.5); font-size: 12px; padding: 4px 6px; flex-shrink: 0;
+}
+.nav-mini-btn:hover { color: #fff; }
+.nav-menu li { margin-bottom: 2px; }
+.nav-link {
+  display: block;
+  padding: 8px 16px 8px 28px;
+  color: rgba(255, 255, 255, 0.80);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  transition: background 0.12s, color 0.12s;
+  letter-spacing: 0.1px;
+  position: relative;
+}
+.nav-link:hover { background: rgba(255, 255, 255, 0.09); color: #fff; }
+.nav-link.active {
+  background: var(--color-sidebar-active);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--color-sidebar-accent);
+}
+
+.sidebar-footer { padding: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+
+/* Folded sidebar (desktop only): icon rail. Labels are swapped to
+   emoji-only by the toggle (bare text nodes cannot be hidden by CSS
+   without clipping mid-word); here just the geometry collapses. */
+@media (min-width: 961px) {
+  body.sidebar-collapsed .sidebar { width: 64px; }
+  body.sidebar-collapsed .main-wrapper { margin-left: 64px; }
+  body.sidebar-collapsed .sidebar-brand { justify-content: center; padding: 16px 6px; }
+  body.sidebar-collapsed .sidebar-brand > div { display: none; }
+  body.sidebar-collapsed .brand-logo { max-width: 52px; height: 34px; }
+  body.sidebar-collapsed #nav-list li.nav-section { display: none; }
+  body.sidebar-collapsed .nav-link { text-align: center; padding: 10px 4px; font-size: 20px; }
+  body.sidebar-collapsed .nav-sub-reports .nav-link { padding-left: 4px; font-size: 20px; }
+  body.sidebar-collapsed .sidebar-footer { display: none; }
+  body.sidebar-collapsed #nav-custom-reports, body.sidebar-collapsed #nav-saved-reports { display: none; }
+}
+.sys-status { font-size: 12px; color: rgba(255, 255, 255, 0.68); margin-bottom: 4px; }
+.sys-status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.sys-status .dot-green {
+  background: #34d399;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.25);
+}
+.sys-status .dot-amber {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25);
+}
+.sys-status .dot-red {
+  background: #f87171;
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.25);
+}
+
+/* Main wrapper */
+.main-wrapper {
+  margin-left: 252px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  transition: margin-left 0.25s ease;
+}
+
+/* Header */
+.top-header {
+  height: 60px;
+  background: #ffffff;
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  box-shadow: 0 2px 10px rgba(16, 26, 46, 0.10);
+  position: sticky;
+  top: 0;
+  z-index: 90;
+}
+.top-header::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 3px;
+  background: var(--accent-grad);
+}
+.header-left { display: flex; align-items: center; gap: 14px; }
+#page-title { font-size: 22px; font-weight: 600; color: var(--color-text); letter-spacing: 0.2px; }
+.header-right { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--color-text-muted); }
+
+/* Main content */
+.main-content {
+  padding: 28px 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  flex: 1;
+}
+
+/* Cards */
+.card {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border);
+  padding: 16px;
+  margin-bottom: 24px;
+}
+.card h3 { font-size: 16px; font-weight: 600; margin-bottom: 12px; letter-spacing: 0.2px; }
+
+/* Contextual cards: an open detail reads as "looking at a record" (teal),
+// an open form as "editing" (amber), so a scrolled detail never blends into
+// the white list cards around it. Applied to challan panels first; other
+// pages adopt the same two classes with no further CSS. */
+.card-view {
+  background: #f0faf8;
+  border: 1px solid #bfe3dd;
+  border-left: 4px solid var(--color-primary);
+}
+.card-form {
+  background: #fffdf5;
+  border: 1px solid #f0e2b8;
+  border-left: 4px solid var(--color-warning);
+}
+[data-theme="dark"] .card-view { background: #0c1f1c; border-color: #134e4a; border-left-color: var(--color-primary); }
+[data-theme="dark"] .card-form { background: #221d0e; border-color: #57500f; border-left-color: var(--color-warning); }
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.08s;
+  text-decoration: none;
+  letter-spacing: 0.1px;
+}
+.btn-sm { padding: 6px 12px; font-size: 13px; }
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.btn-primary {
+  background: linear-gradient(135deg, #008078 0%, #00695f 100%);
+  color: #fff; border-color: #00695f;
+  box-shadow: 0 1px 2px rgba(0, 128, 120, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-primary:hover {
+  background: linear-gradient(135deg, #00746c 0%, #00564e 100%);
+  border-color: #00564e;
+  box-shadow: 0 4px 12px rgba(0, 128, 120, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+/* Row-action semantic colors: View=blue (read), Payment/Pay=green (money
+   in), Edit=amber (modify). Solid gradients matching .btn-primary so a row
+   reads as one family; Delete keeps red. The color says the action before
+   the label is read. Exempt from role-viewer hiding (that CSS targets
+   .btn-primary), so a viewer keeps its read-only View buttons. */
+.btn-info {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+  color: #fff; border-color: #075985;
+  box-shadow: 0 1px 2px rgba(3, 105, 161, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-info:hover {
+  background: linear-gradient(135deg, #075985 0%, #1e40af 100%);
+  border-color: #1e40af;
+  box-shadow: 0 4px 12px rgba(3, 105, 161, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+.btn-success {
+  background: linear-gradient(135deg, #047857 0%, #065f46 100%);
+  color: #fff; border-color: #065f46;
+  box-shadow: 0 1px 2px rgba(4, 120, 87, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-success:hover {
+  background: linear-gradient(135deg, #056649 0%, #044434 100%);
+  border-color: #044434;
+  box-shadow: 0 4px 12px rgba(4, 120, 87, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+.btn-warn {
+  background: linear-gradient(135deg, #b45309 0%, #92400e 100%);
+  color: #fff; border-color: #92400e;
+  box-shadow: 0 1px 2px rgba(180, 83, 9, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-warn:hover {
+  background: linear-gradient(135deg, #a14808 0%, #78350f 100%);
+  border-color: #78350f;
+  box-shadow: 0 4px 12px rgba(180, 83, 9, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+/* Tool accent (violet): buttons that open a helper/editor and change nothing
+   by themselves - Help, History, Copy, Email PDF. Distinct hue so a
+   plain-looking row action reads as "opens a tool" rather than a disabled
+   or secondary button. Exempt from role-viewer hiding (that CSS targets
+   .btn-primary and [data-approve] only). */
+.btn-tool {
+  background: linear-gradient(135deg, #6d28d9 0%, #5b21b6 100%);
+  color: #fff; border-color: #5b21b6;
+  box-shadow: 0 1px 2px rgba(109, 40, 217, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-tool:hover {
+  background: linear-gradient(135deg, #5b21b6 0%, #4c1d95 100%);
+  border-color: #4c1d95;
+  box-shadow: 0 4px 12px rgba(109, 40, 217, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+/* Four more row-action hues so differently-named buttons never share one
+   color in a row. Same gradient family as the others.
+   .btn-opening  fuchsia  - Opening stock (inventory data entry)
+   .btn-workflow indigo   - Workflow / process setup
+   .btn-restore  slate    - Restore / Reactivate / Reopen / Close-state
+   .btn-export   navy     - Download / PDF / Print / Export family
+   All exempt from role-viewer hiding (viewer CSS targets .btn-primary and
+   [data-approve] only). */
+.btn-opening {
+  background: linear-gradient(135deg, #a21caf 0%, #86198f 100%);
+  color: #fff; border-color: #86198f;
+  box-shadow: 0 1px 2px rgba(162, 28, 175, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-opening:hover {
+  background: linear-gradient(135deg, #86198f 0%, #701a75 100%);
+  border-color: #701a75;
+  box-shadow: 0 4px 12px rgba(162, 28, 175, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+.btn-workflow {
+  background: linear-gradient(135deg, #4338ca 0%, #3730a3 100%);
+  color: #fff; border-color: #3730a3;
+  box-shadow: 0 1px 2px rgba(67, 56, 202, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-workflow:hover {
+  background: linear-gradient(135deg, #3730a3 0%, #312e81 100%);
+  border-color: #312e81;
+  box-shadow: 0 4px 12px rgba(67, 56, 202, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+.btn-restore {
+  background: linear-gradient(135deg, #475569 0%, #334155 100%);
+  color: #fff; border-color: #334155;
+  box-shadow: 0 1px 2px rgba(71, 85, 105, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-restore:hover {
+  background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+  border-color: #1e293b;
+  box-shadow: 0 4px 12px rgba(71, 85, 105, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+.btn-export {
+  background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+  color: #fff; border-color: #1e3a8a;
+  box-shadow: 0 1px 2px rgba(30, 64, 175, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-export:hover {
+  background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%);
+  border-color: #172554;
+  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+/* WhatsApp share buttons: brand green, a touch yellower than the money-green
+   .btn-success so the two never read as the same action family. */
+.btn-wa {
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  color: #fff; border-color: #15803d;
+  box-shadow: 0 1px 2px rgba(22, 163, 74, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-wa:hover {
+  background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+  border-color: #166534;
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+.btn-secondary {
+  background: linear-gradient(180deg, #ffffff 0%, #f2f8f7 100%);
+  color: #00564e; border: 1px solid #7fc0b8;
+  box-shadow: 0 1px 2px rgba(16, 26, 46, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+.btn-secondary:hover {
+  background: #e6f4f1;
+  border-color: #008078; color: #00443d;
+  box-shadow: 0 4px 10px rgba(0, 128, 120, 0.18);
+}
+.btn-danger {
+  background: linear-gradient(135deg, #e11d48 0%, #be123c 100%);
+  color: #fff; border-color: #be123c;
+  box-shadow: 0 1px 2px rgba(190, 18, 60, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-danger:hover {
+  background: linear-gradient(135deg, #cf1745 0%, #9f1239 100%);
+  border-color: #9f1239;
+  box-shadow: 0 4px 12px rgba(190, 18, 60, 0.32);
+}
+/* Dismiss buttons (Close/Cancel/✕): red like danger, but an outline so a
+   dismiss never reads as a destructive action - and so the editor-off
+   dimming (which targets .btn-danger only) can never make a Close look
+   disabled. Primary Save/Add/OK buttons stay teal. */
+.btn-danger-outline { background: linear-gradient(180deg, #fff 0%, #fef2f4 100%); color: var(--color-danger); border-color: var(--color-danger); }
+.btn-danger-outline:hover { background: var(--color-danger-soft); border-color: var(--color-danger); color: #9f1239; }
+.btn:disabled, .btn.disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+.btn-icon { background: transparent; border: none; font-size: 20px; color: var(--color-text); padding: 4px; cursor: pointer; }
+.btn-icon:hover { color: var(--color-primary); }
+
+/* Forms */
+.form-group { margin-bottom: 16px; }
+.form-group label {
+  display: block; font-size: 12px; font-weight: 600;
+  color: var(--color-text-muted); margin-bottom: 6px; letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+/* Mandatory-field star: any label whose group holds a required control gets
+   a red asterisk. Covers every entry form at once (static and JS-built rows),
+   since the star follows the `required` attribute, not per-page markup. */
+.form-group:has(input[required], select[required], textarea[required]) > label::after {
+  content: " *"; color: var(--color-danger); font-weight: 700;
+}
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%; padding: 9px 12px; border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 14px; background: #fff; color: var(--color-text); font-family: var(--font-base);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+/* ₹ prefix on money inputs (sits inside a flex row before the input, which
+   drops its own left corners). Universal money rule: rupee wherever money
+   is typed or displayed. */
+.rupee-prefix {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 32px; padding: 0 8px;
+  border: 1px solid var(--color-border-strong); border-right: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  background: var(--color-surface-alt, #f5f8fc);
+  color: var(--color-text-muted); font-size: 14px; white-space: nowrap;
+}
+.money-input { border-top-left-radius: 0 !important; border-bottom-left-radius: 0 !important; }
+.form-group input:hover, .form-group select:hover, .form-group textarea:hover {
+  border-color: var(--color-primary);
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-ring);
+}
+/* Inline validation: the control keeps a red border until the form is
+   resubmitted (clearFieldErrors runs first on every submit). */
+.form-group input.field-invalid, .form-group select.field-invalid,
+.form-group textarea.field-invalid {
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 3px var(--color-danger-soft);
+}
+.form-row { display: flex; gap: 16px; }
+.form-row .form-group { flex: 1; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; }
+.table-wrap table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table-wrap th, .table-wrap td {
+  padding: 10px 14px; text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+.table-wrap th {
+  font-size: 11px; font-weight: 700; color: #ffffff;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  background: linear-gradient(180deg, #0a6b64 0%, #085952 100%);
+  position: sticky; top: 0;
+}
+[data-theme="dark"] .table-wrap th { background: #123f3b; color: #d7f3ee; }
+.table-wrap td { color: var(--color-text); }
+.table-wrap tbody tr:nth-child(even) td { background: #f2f7f6; }
+[data-theme="dark"] .table-wrap tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.025); }
+.table-wrap tbody tr:hover td { background: #e2f2ee; }
+[data-theme="dark"] .table-wrap tbody tr:hover td { background: #1c2946; }
+
+/* Row action buttons: one shared layout. Every Actions cell wraps its buttons
+   in this span so they flow into two neat rows where they don't fit one
+   line — everything stays visible with no sideways scrolling. */
+.row-actions { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; white-space: nowrap; }
+.table-wrap .text-right { text-align: right; }
+.table-wrap .text-muted { color: var(--color-text-muted); }
+
+/* Shared figure boxes: one outline language for key figures on summary
+   pages (monthly sales, purchase/production history, payroll, dashboard).
+   Nonzero figures get the slate outline, negatives the red one; zeros and
+   placeholders stay plain. Pages call UI.figBox() so the rule can't drift. */
+.fig-box { display: inline-block; border: 1.5px solid #64748b; border-radius: 6px; padding: 0 8px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fig-box.fig-neg { border-color: #f43f5e; color: var(--color-danger); }
+[data-theme="dark"] .fig-box { border-color: #94a3b8; }
+[data-theme="dark"] .fig-box.fig-neg { border-color: #fb7185; color: #fb7185; }
+
+/* Text selection: every content surface stays drag-selectable so values can
+   be copied with Ctrl+C. Only sortable column headers opt out (a drag there
+   would fight the click-to-sort), and inputs keep their native behaviour. */
+.main-content, .main-content p, .main-content td, .main-content span,
+.main-content div, .main-content h1, .main-content h2, .main-content h3,
+.main-content h4, .main-content li, .main-content a,
+.sidebar, .sidebar span, .sidebar a {
+  -webkit-user-select: text; user-select: text;
+}
+.table-wrap th, .toggle-archived, .btn, button {
+  -webkit-user-select: none; user-select: none;
+}
+::selection { background: var(--color-primary-soft); }
+
+/* Draggable popup handles. Any [data-drag-handle] row grabs its dialog box;
+   dialogs re-center on every open. The qualified rule beats the content
+   text-selection rule above for header rows. */
+[data-drag-handle],
+.main-content [data-drag-handle] {
+  cursor: grab; touch-action: none; user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Right-click Copy menu. The packaged desktop window shows no native context
+   menu, so right-clicking selected text otherwise does nothing at all. */
+.ctx-menu {
+  position: fixed; z-index: 9999; min-width: 140px;
+  background: var(--color-surface); border: 1px solid var(--color-border-strong);
+  border-radius: 8px; box-shadow: 0 12px 28px rgba(16, 26, 46, 0.18); padding: 4px;
+}
+.ctx-item {
+  display: block; width: 100%; text-align: left; background: none; border: 0;
+  border-radius: 6px; padding: 8px 12px; font-size: 13px; color: var(--color-text);
+  cursor: pointer;
+}
+.ctx-item:hover { background: var(--color-primary-soft); }
+
+/* Badges */
+.badge {
+  display: inline-block; padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.3px;
+}
+.badge-success { background: var(--color-success-soft); color: var(--color-success); }
+.badge-warning { background: var(--color-warning-soft); color: var(--color-warning); }
+.badge-danger { background: var(--color-danger-soft); color: var(--color-danger); }
+
+/* Modal (audit detail) */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 1200;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(16, 26, 46, 0.55);
+  animation: modal-fade 0.15s ease;
+}
+.modal-card {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-raised);
+  width: 100%; max-width: 860px;
+  max-height: 88vh; display: flex; flex-direction: column;
+  animation: modal-pop 0.15s ease;
+}
+.modal-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 18px 20px; border-bottom: 1px solid var(--color-border);
+}
+.modal-head h3 { font-size: 16px; font-weight: 600; }
+.modal-close {
+  background: none; border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  width: 30px; height: 30px; flex: 0 0 auto;
+  font-size: 18px; line-height: 1; cursor: pointer;
+  color: var(--color-danger);
+}
+.modal-close:hover { background: var(--color-danger-soft); color: #9f1239; }
+.modal-body { padding: 18px 20px; overflow-y: auto; }
+@keyframes modal-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-pop {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Stats / Dashboard */
+.stats-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px; margin-bottom: 24px;
+}
+.stat-card {
+  position: relative; overflow: hidden;
+  background: var(--color-surface);
+  border-radius: var(--radius); padding: 14px;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.stat-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--accent-grad);
+}
+.stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-raised); }
+.stat-card h4 {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--color-text-muted); font-weight: 700; margin-bottom: 10px;
+}
+.stat-card .stat-icon {
+  font-size: 16px; line-height: 1;
+  background: var(--color-primary-soft); color: var(--color-primary);
+  padding: 6px; border-radius: 8px;
+}
+.stat-card .stat-value {
+  font-size: 24px; font-weight: 700; color: var(--color-text); letter-spacing: -0.5px;
+}
+.stat-card .stat-sub { font-size: 12px; color: var(--color-text-muted); margin-top: 4px; }
+
+/* Toast notifications */
+#toast-container {
+  position: fixed; bottom: 24px; right: 24px; z-index: 999;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.toast {
+  background: #101a2e; color: #fff; padding: 14px 18px;
+  border-radius: var(--radius-sm); font-size: 13px;
+  box-shadow: var(--shadow-raised); min-width: 280px; max-width: 420px;
+  animation: slideUp 0.25s ease;
+}
+.toast.success { border-left: 4px solid #10b981; }
+.toast.error { border-left: 4px solid #f43f5e; }
+.toast.info { border-left: 4px solid #38bdf8; }
+@keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Auth gate */
+#auth-screen {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #0d5c63 0%, #0f3d5c 50%, #102a43 100%);
+  padding: 24px;
+}
+.auth-card {
+  background: var(--color-surface);
+  border-radius: 16px;
+  padding: 32px;
+  width: 100%; max-width: 400px;
+  box-shadow: 0 24px 60px rgba(6, 20, 40, 0.40);
+}
+.auth-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.auth-brand h2 { font-size: 18px; font-weight: 700; }
+.auth-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+.auth-tab {
+  flex: 1; padding: 8px; border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-alt); font-size: 14px; font-weight: 600;
+  cursor: pointer; color: var(--color-text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+.auth-tab:hover { background: var(--color-primary-soft); }
+.auth-tab.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.auth-hint { font-size: 12px; color: var(--color-text-muted); margin-top: 12px; text-align: center; }
+body.logged-out .sidebar, body.logged-out .main-wrapper { visibility: hidden; }
+
+/* Role-based UI: viewers read-only, data entry no deletes/approvals, non-admins no Users/Backup */
+body.role-viewer .card .btn-primary,
+body.role-viewer .card .btn-danger,
+body.role-viewer .card button[type="submit"],
+body.role-viewer .sidebar-footer .btn,
+body.role-viewer [data-approve] { display: none; }
+body.role-data_entry .card .btn-danger,
+body.role-data_entry [data-approve] { display: none; }
+body:not(.role-admin) .nav-link[data-page="users"],
+body:not(.role-admin) .nav-link[data-page="backup"],
+body:not(.role-admin) .nav-link[data-page="settings"],
+body.role-viewer .nav-link[data-page="audit"],
+body.role-viewer .nav-link[data-page="import"],
+body.role-data_entry .nav-link[data-page="import"] { display: none; }
+
+  /* Editor Mode ------------------------------------------------------------
+     A deliberate second gate before anything can be edited or deleted. The
+     server is the real enforcement; this just makes the state obvious and
+     stops the destructive buttons being clicked by accident. */
+  .editor-toggle {
+    border: 1px solid var(--color-border-strong);
+    background: var(--color-surface-alt);
+    color: var(--color-text-muted);
+    font-weight: 600;
+  }
+  .editor-toggle.editor-on {
+    background: var(--color-accent-soft);
+    border-color: var(--color-accent);
+    color: var(--color-warning);
+  }
+  .editor-toggle:disabled { opacity: 0.6; }
+
+  /* With Editor Mode off, destructive and approval actions look disabled
+     but stay clickable so the click can be ANSWERED with the reason
+     (see installBlockExplainer) instead of vanishing silently.
+     The classes used here are the same ones the role rules already target, so
+     one set of buttons is covered by both. */
+  body.editor-off .card .btn-danger,
+  body.editor-off .card [data-approve] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  body.editor-off .card .btn-danger:hover,
+  body.editor-off .card [data-approve]:hover { opacity: 0.4; }
+
+  /* Archived (soft-deleted) records: kept for history, hidden from totals work */
+  .row-archived td { opacity: 0.55; }
+.row-archived td:first-child { border-left: 3px solid var(--color-border-strong); }
+.badge-archived { background: var(--color-text-muted); color: #fff; }
+.toggle-archived {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--color-text-muted);
+  cursor: pointer; user-select: none;
+}
+.toggle-archived:hover { color: var(--color-primary); }
+
+/* Responsive / Mobile sidebar */
+@media (max-width: 960px) {
+  .dash-row, .inv-snap-row { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 960px) {
+  .sidebar { transform: translateX(-100%); }
+  .sidebar.open { transform: translateX(0); box-shadow: 0 0 40px rgba(6, 20, 40, 0.45); }
+  .main-wrapper { margin-left: 0; }
+}
+
+/* Product Help rich tables (production guidance box). */
+.ph-help table { border-collapse: collapse; margin: 6px 0; }
+.ph-help th, .ph-help td { border: 1px solid var(--color-border-strong); padding: 4px 8px; font-size: 12px; text-align: left; }
+
+/* ============================================
+   Dark theme (opt-in via the header toggle).
+   Everything structural already flows through the vars above; the extra
+   rules below cover the handful of hardcoded light surfaces in markup
+   and page-level <style> blocks (modal boxes, sticky table cells).
+   Print always renders light (see the beforeprint hook in app.js).
+   ============================================ */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #0b1220;
+  --color-bg-2: #0d1526;
+  --color-surface: #141d31;
+  --color-surface-alt: #1a2439;
+  --color-text: #e7eef8;
+  --color-text-muted: #9db0c9;
+  --color-border: #28365a;
+  --color-border-strong: #3a4c74;
+  --color-primary-soft: #073b37;
+  --color-primary-ring: rgba(45, 212, 191, 0.28);
+  --color-accent-soft: #40300a;
+  --color-success-soft: #07382c;
+  --color-warning-soft: #3d2c0a;
+  --color-danger-soft: #481524;
+  --color-info-soft: #0c3049;
+  --color-sidebar-top: #08272b;
+  --color-sidebar-mid: #0a2337;
+  --color-sidebar-bot: #060f1d;
+  --color-sidebar-grad: linear-gradient(180deg, #08272b 0%, #0a2337 55%, #060f1d 100%);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.35);
+  --shadow-header: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-raised: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+/* Hardcoded light controls */
+[data-theme="dark"] .btn-secondary {
+  background: linear-gradient(180deg, #22304d 0%, #1a2439 100%);
+  color: #bfe9e2; border-color: #2f4a44;
+}
+[data-theme="dark"] .btn-secondary:hover {
+  background: linear-gradient(180deg, #2a3a5c 0%, #22304d 100%);
+  border-color: #2dd4bf; color: #d9f7f0;
+}
+[data-theme="dark"] .btn-danger-outline { background: transparent; }
+/* Row-action colors in dark: deep fills keep the hue identity, text steps
+   up to a bright tint (same treatment as the dark status pills). */
+[data-theme="dark"] .btn-info {
+  background: linear-gradient(135deg, #0c4a6e 0%, #1e3a8a 100%);
+  color: #bae6fd; border-color: #38bdf8;
+}
+[data-theme="dark"] .btn-info:hover {
+  background: linear-gradient(135deg, #075985 0%, #1e40af 100%);
+  color: #e0f2fe;
+}
+[data-theme="dark"] .btn-success {
+  background: linear-gradient(135deg, #064e3b 0%, #022c22 100%);
+  color: #6ee7b7; border-color: #34d399;
+}
+[data-theme="dark"] .btn-success:hover {
+  background: linear-gradient(135deg, #065f46 0%, #044434 100%);
+  color: #a7f3d0;
+}
+[data-theme="dark"] .btn-warn {
+  background: linear-gradient(135deg, #78350f 0%, #451a03 100%);
+  color: #fcd34d; border-color: #fbbf24;
+}
+[data-theme="dark"] .btn-warn:hover {
+  background: linear-gradient(135deg, #92400e 0%, #78350f 100%);
+  color: #fef3c7;
+}
+[data-theme="dark"] .btn-tool {
+  background: linear-gradient(135deg, #5b21b6 0%, #3b0764 100%);
+  color: #ddd6fe; border-color: #a78bfa;
+}
+[data-theme="dark"] .btn-tool:hover {
+  background: linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%);
+  color: #ede9fe;
+}
+[data-theme="dark"] .btn-wa {
+  background: linear-gradient(135deg, #166534 0%, #14532d 100%);
+  color: #86efac; border-color: #4ade80;
+}
+[data-theme="dark"] .btn-wa:hover {
+  background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+  color: #bbf7d0;
+}
+/* Dark variants of the four extra row-action hues: deep tinted backgrounds,
+   light readable text (same approach as .btn-tool / .btn-wa above). */
+[data-theme="dark"] .btn-opening {
+  background: linear-gradient(135deg, #86198f 0%, #4a044e 100%);
+  color: #f5d0fe; border-color: #e879f9;
+}
+[data-theme="dark"] .btn-opening:hover {
+  background: linear-gradient(135deg, #a21caf 0%, #701a75 100%);
+  color: #fae8ff;
+}
+[data-theme="dark"] .btn-workflow {
+  background: linear-gradient(135deg, #3730a3 0%, #1e1b4b 100%);
+  color: #c7d2fe; border-color: #818cf8;
+}
+[data-theme="dark"] .btn-workflow:hover {
+  background: linear-gradient(135deg, #4338ca 0%, #312e81 100%);
+  color: #e0e7ff;
+}
+[data-theme="dark"] .btn-restore {
+  background: linear-gradient(135deg, #334155 0%, #0f172a 100%);
+  color: #cbd5e1; border-color: #94a3b8;
+}
+[data-theme="dark"] .btn-restore:hover {
+  background: linear-gradient(135deg, #475569 0%, #1e293b 100%);
+  color: #e2e8f0;
+}
+[data-theme="dark"] .btn-export {
+  background: linear-gradient(135deg, #1e3a8a 0%, #0c173d 100%);
+  color: #bfdbfe; border-color: #93c5fd;
+}
+[data-theme="dark"] .btn-export:hover {
+  background: linear-gradient(135deg, #1e40af 0%, #172554 100%);
+  color: #dbeafe;
+}
+[data-theme="dark"] .form-group input, [data-theme="dark"] .form-group select,
+[data-theme="dark"] .form-group textarea { background: #0d1526; color: var(--color-text); }
+[data-theme="dark"] .table-wrap tbody tr:hover td { background: #1c2946; }
+/* Hardcoded light surfaces in markup and page styles (modal boxes, search
+   results, sticky analysis cells). Inline styles beat plain rules, hence
+   !important — scoped to data-theme so light is untouched. */
+[data-theme="dark"] .dlg-box { background: var(--color-surface) !important; }
+[data-theme="dark"] .dlg-box h3 { color: var(--color-text) !important; }
+[data-theme="dark"] .dlg-box p { color: var(--color-text-muted) !important; }
+[data-theme="dark"] #global-search-results { background: var(--color-surface) !important; }
+[data-theme="dark"] .analysis-table thead th:not(.pill-stock):not(.pill-sale):not(.pill-bal) { background: #1c2946; }
+[data-theme="dark"] .analysis-table thead { background: #1c2946; }
+[data-theme="dark"] .analysis-table .col-product { background: var(--color-surface); }
+[data-theme="dark"] .analysis-table thead .col-product { background: #1c2946; }
+[data-theme="dark"] .analysis-table tfoot td { background: #1c2946; }
+[data-theme="dark"] .analysis-table tbody tr:hover td { background: #1c2946; }
+[data-theme="dark"] .analysis-table .neg { background: #481524; }
+[data-theme="dark"] .analysis-table tbody tr:hover td.col-bal { background: #0b4a42; }
+[data-theme="dark"] .analysis-table thead .col-month { background: #1c2946; }
+[data-theme="dark"] .analysis-table .col-month { background: var(--color-surface); }
+/* Inline hardcoded light surfaces/text rendered by page JS (detail rows,
+   dispatch boxes, empty states, suggest hover, highlights). Attribute
+   selectors beat inline styles only with !important, scoped strictly to
+   dark so light never sees them. */
+[data-theme="dark"] [style*="#f5f8fc"] { background-color: #1a2439 !important; }
+[data-theme="dark"] [style*="#fef9c3"] { background-color: #4a3f0a !important; color: #f5e9b8 !important; }
+[data-theme="dark"] [style*="#d1fae5"] { background-color: #07382c !important; color: #c9f5e3 !important; }
+[data-theme="dark"] [style*="#fef3c7"] { background-color: #3d2c0a !important; color: #f7e3ae !important; }
+[data-theme="dark"] [style*="#f1f5f9"] { background-color: #1a2439 !important; color: var(--color-text) !important; }
+[data-theme="dark"] [style*="#5b6b84"] { color: #9db0c7 !important; }
+[data-theme="dark"] [style*="#101a2e"] { color: var(--color-text) !important; }
+[data-theme="dark"] [style*="#a60"] { color: #f0b429 !important; }
+[data-theme="dark"] [style*="#a7f3d0"] { background-color: #0b4a42 !important; }
+/* Header bar: hardcoded white glass in light; without this the var-driven
+   title, search text and user info render white-on-white and vanish. */
+[data-theme="dark"] .top-header {
+  background: #182338;
+  border-bottom-color: #2a3a5c;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+}
+[data-theme="dark"] #global-search { background: #0d1526; color: var(--color-text); }
+[data-theme="dark"] #global-search::placeholder { color: var(--color-text-muted); }
+/* Status pills: light-mode pairings go muddy on dark (dark text on dark
+   tint), so the text steps up to a bright tint while the fill stays deep. */
+[data-theme="dark"] .badge-danger { color: #fb7185; }
+[data-theme="dark"] .badge-warning { color: #fbbf24; }
+[data-theme="dark"] .badge-success { color: #34d399; }
+/* Editor toggle ON: dark-amber on deep-brown is mud here, so the text
+   steps up to bright amber (same treatment as the warning pill). */
+[data-theme="dark"] .editor-toggle.editor-on { color: #fbbf24; border-color: #f59e0b; }

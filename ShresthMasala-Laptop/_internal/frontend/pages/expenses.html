@@ -1,0 +1,316 @@
+<!-- Expenses -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h2 style="font-size: 18px; font-weight: 600;">Expenses</h2>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <label class="toggle-archived"><input type="checkbox" id="exp-show-archived" onchange="loadExpenses()"> Show archived</label>
+      <button class="btn btn-primary" onclick="openNewExpenseForm()">+ Add Expense</button>
+    </div>
+  </div>
+
+  <div id="exp-form" style="display:none; border-top:1px solid var(--color-border); padding-top:16px; margin-bottom:16px;">
+    <h4 style="font-size:14px; font-weight:600; margin-bottom:12px;">New Expense</h4>
+    <form onsubmit="saveExpense(event)" id="new-exp-form">
+      <div class="form-row">
+        <div class="form-group"><label>Category</label><select id="exp-cat"></select></div>
+        <div class="form-group"><label>Or New Category</label><input id="exp-newcat" placeholder="e.g. Packaging" /></div>
+        <div class="form-group"><label>Date</label><input id="exp-date" type="date" required /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Description</label><input id="exp-desc" list="exp-desc-list" placeholder="Type new, or pick from history" autocomplete="off" required /><datalist id="exp-desc-list"></datalist></div>
+        <div class="form-group"><label>Amount</label><input id="exp-amt" type="number" step="0.01" min="0" required /></div>
+        <div class="form-group"><label>Payment Mode</label>
+          <select id="exp-mode">
+            <option value="cash">Cash</option>
+            <option value="upi">UPI</option>
+            <option value="bank_transfer">Bank Transfer</option>
+            <option value="cheque">Cheque</option>
+            <option value="card">Card</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Payee</label><input id="exp-payee" list="exp-payee-list" placeholder="Type new, or pick from history" autocomplete="off" /><datalist id="exp-payee-list"></datalist></div>
+        <div class="form-group"><label>Notes</label><input id="exp-notes" /></div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:8px; align-items:center;">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" class="btn btn-danger-outline" onclick="cancelExpenseForm()">Cancel</button>
+      </div>
+    </form>
+    <div id="exp-msg" style="font-size:13px; margin-top:10px; color: var(--color-text-muted);"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+    <h3 style="margin:0;">Expense List</h3>
+    <input id="exp-search" type="search" placeholder="Search description, category, payee…"
+      oninput="filterExpenses()"
+      style="padding:8px 12px; border:1px solid var(--color-border); border-radius:6px; font-size:14px; min-width:240px;" />
+  </div>
+  <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:12px; flex-wrap:wrap;">
+    <div class="form-group" style="margin:0;"><label>From</label><input id="exp-from" type="date" onchange="expDateChanged()" /></div>
+    <div class="form-group" style="margin:0;"><label>To</label><input id="exp-to" type="date" onchange="expDateChanged()" /></div>
+    <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; padding-bottom:8px;">
+      <input type="checkbox" id="exp-fy-only" onchange="toggleExpFy()" />
+      <span>Current FY only</span>
+    </label>
+    <button class="btn btn-secondary btn-sm" type="button" onclick="resetExpenseFilters()" title="Clear search, dates and FY toggle" style="margin-bottom:6px;">↺ Reset</button>
+  </div>
+  <div id="exp-table"></div>
+  <p id="exp-count" style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"></p>
+  <p id="exp-total" style="font-size:14px; font-weight:600; margin-top:4px;"></p>
+</div>
+
+<script>
+(function(){
+  let allExpenses = [];
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function renderExpenseTable(list) {
+    const rows = (list || []).map(e => ({
+      _archived: !!e.is_archived,
+      id: e.id,
+      date: window.UI.dateWithTime(e.date, e.created_at),
+      dateKey: window.UI.tsKey(e.date, e.created_at),
+      category: e.category_name || "—",
+      description: (e.is_archived ? '<span class="badge badge-archived">Archived</span> ' : "") + (e.description || ""),
+      payee: e.payee || "—",
+      mode: e.payment_mode || "—",
+      amount: window.UI.money(e.amount),
+      actions: `<span class="row-actions">` + (e.is_archived
+        ? `<button class="btn btn-sm btn-restore" onclick="restoreExpense(${e.id})">Restore</button>`
+        : `<button class="btn btn-sm btn-danger" onclick="deleteExpense(${e.id})">Archive</button>`) + `</span>`
+    }));
+    const container = document.getElementById("exp-table");
+    if (container && window.UI.renderTable) {
+      window.UI.renderTable(container, rows, [
+        {key:"date",label:"Date"},{key:"category",label:"Category"},{key:"description",label:"Description"},
+        {key:"payee",label:"Payee"},{key:"mode",label:"Mode"},{key:"amount",label:"Amount (₹)"},{key:"actions",label:"Actions"}
+      ], { rowClass: (r) => (r._archived ? "row-archived" : ""), pageSize: 15, sortValue: { date: r => r.dateKey } });
+    }
+    const count = document.getElementById("exp-count");
+    if (count) count.textContent = "Showing " + rows.length + " of " + allExpenses.length + " expenses";
+    const totalEl = document.getElementById("exp-total");
+    if (totalEl) {
+      const t = (list || []).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+      totalEl.textContent = "Shown total: " + window.UI.money(t);
+    }
+  }
+
+  // See challans.html: the FY checkbox is only ever changed by the user, and
+  // the choice persists across navigation instead of resetting itself.
+  const EXP_FILTER_KEY = "expenses-filters";
+
+  function saveExpenseFilters() {
+    window.UI.saveFilterState(EXP_FILTER_KEY, {
+      fyOnly: document.getElementById("exp-fy-only").checked,
+      from: document.getElementById("exp-from").value,
+      to: document.getElementById("exp-to").value,
+    });
+  }
+
+  function restoreExpenseFilters() {
+    const s = window.UI.loadFilterState(EXP_FILTER_KEY);
+    if (!s) return;
+    const box = document.getElementById("exp-fy-only");
+    if (box && typeof s.fyOnly === "boolean") box.checked = s.fyOnly;
+    if (typeof s.from === "string") document.getElementById("exp-from").value = s.from;
+    if (typeof s.to === "string") document.getElementById("exp-to").value = s.to;
+    // Saved state can carry last FY's dates; from > to hides every row.
+    if (box && box.checked) window.UI.dropInvertedRange("exp-from", "exp-to");
+  }
+
+  // Ticking "Current FY only" is a preset: FY start, no upper bound. Leaving a
+  // stale `to` behind made from > to, which filtered every row out.
+  window.toggleExpFy = function () {
+    const box = document.getElementById("exp-fy-only");
+    if (box.checked) window.UI.applyFyStart("exp-from", "exp-to");
+    else document.getElementById("exp-from").value = "";
+    saveExpenseFilters();
+    window.filterExpenses();
+  };
+
+  window.expDateChanged = function () {
+    saveExpenseFilters();
+    window.filterExpenses();
+  };
+
+  // Clean sweep of the expense filters (search, dates, FY toggle). The saved
+  // filter state is rewritten blank so a reload stays clean too; the Show
+  // archived toggle is a separate server-reload control and stays.
+  window.resetExpenseFilters = function () {
+    document.getElementById("exp-search").value = "";
+    document.getElementById("exp-from").value = "";
+    document.getElementById("exp-to").value = "";
+    const fy = document.getElementById("exp-fy-only");
+    if (fy) fy.checked = false;
+    saveExpenseFilters();
+    window.filterExpenses();
+  };
+
+  window.filterExpenses = function () {
+    const q = (document.getElementById("exp-search").value || "").trim().toLowerCase();
+    const from = document.getElementById("exp-from").value;
+    const to = document.getElementById("exp-to").value;
+    let list = allExpenses.filter(e => window.UI.inDateRange(e.date, from, to));
+    if (!q) { renderExpenseTable(list); return; }
+    const filtered = list.filter(e => [e.description, e.category_name, e.payee, e.payment_mode, e.amount]
+      .map(v => String(v == null ? "" : v).toLowerCase()).some(v => v.includes(q)));
+    renderExpenseTable(filtered);
+  };
+
+  async function loadExpenses() {
+    try {
+      const data = await window.UI.api("/expenses" + (document.getElementById("exp-show-archived").checked ? "?include_archived=true" : ""));
+      allExpenses = data || [];
+      const q = document.getElementById("exp-search");
+      window.filterExpenses();
+    } catch (e) {
+      console.error("Expenses", e);
+      document.getElementById("exp-table").innerHTML = "<p>Failed to load.</p>";
+    }
+  }
+
+  async function loadCategories() {
+    try {
+      const data = await window.UI.api("/expense-categories");
+      const sel = document.getElementById("exp-cat");
+      // The user may have picked a category while this fetch was in flight;
+      // rebuilding the list would silently reset the select to "Select…".
+      const keep = sel.value;
+      sel.innerHTML = '<option value="">Select…</option>' +
+        window.UI.sortByName(data).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+      if (keep && [...sel.options].some(o => o.value === keep)) sel.value = keep;
+      if (window.UI.quickSelect) window.UI.quickSelect(sel, "Type category…");
+    } catch (e) { console.error("Categories", e); }
+  }
+
+  // Payee/description history: first entry is typed by hand, later
+  // expenses pick from it. A fetch failure leaves free-text inputs.
+  async function loadExpenseHistory() {
+    const fill = (id, values) => {
+      const dl = document.getElementById(id);
+      if (!dl) return;
+      dl.innerHTML = (values || []).map(v =>
+        `<option value="${esc(v).replace(/"/g, "&quot;")}">`).join("");
+    };
+    try {
+      const d = await window.UI.api("/expenses/history") || {};
+      fill("exp-payee-list", d.payees);
+      fill("exp-desc-list", d.descriptions);
+    } catch (e) { console.error("Expense history", e); }
+  }
+
+  window.openNewExpenseForm = function () {
+    document.getElementById("new-exp-form").reset();
+    document.getElementById("exp-date").valueAsDate = new Date();
+    document.getElementById("exp-msg").textContent = "";
+    document.getElementById("exp-form").style.display = "block";
+    document.getElementById("exp-desc").focus();
+    // Reload so a category created since the page loaded shows up; the list
+    // rebuild preserves whatever is currently picked.
+    loadCategories();
+    loadExpenseHistory();
+  };
+
+  window.cancelExpenseForm = function () {
+    document.getElementById("new-exp-form").reset();
+    document.getElementById("exp-msg").textContent = "";
+    document.getElementById("exp-form").style.display = "none";
+  };
+
+  window.saveExpense = async function (event) {
+    if (event) event.preventDefault();
+    const __release = window.UI.submitGuard(event);
+    if (!__release) return;
+    const msg = document.getElementById("exp-msg");
+    // "Or New Category" is the more specific intent, so it wins over a picked
+    // dropdown value - the backend prefers category_id, which silently dropped
+    // the typed name and filed the expense under the old category.
+    const newCat = document.getElementById("exp-newcat").value.trim();
+    const pickedCat = document.getElementById("exp-cat").value;
+    const payload = {
+      category_id: newCat || !pickedCat ? null : parseInt(pickedCat),
+      category_name: newCat || null,
+      date: document.getElementById("exp-date").value,
+      description: document.getElementById("exp-desc").value,
+      amount: parseFloat(document.getElementById("exp-amt").value) || 0,
+      payment_mode: document.getElementById("exp-mode").value,
+      payee: document.getElementById("exp-payee").value,
+      notes: document.getElementById("exp-notes").value,
+    };
+    try {
+      const res = await fetch("/expenses", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+      // #exp-msg lives inside the form container hidden just below, so a
+      // success message written there would never be painted.
+      window.UI.notify("Expense saved under " + (data.category_name || "Miscellaneous") + ".", "success");
+      document.getElementById("exp-form").style.display = "none";
+      document.getElementById("new-exp-form").reset();
+      loadExpenses();
+      __release();
+    } catch (e) {
+      msg.textContent = (e.message || "Error");
+      msg.style.color = "var(--color-danger)";
+      __release();
+    }
+  };
+
+  window.deleteExpense = async function (id) {
+    if (!confirm("Archive this expense? It stays in expense totals for the audit trail.")) return;
+    try {
+      const res = await fetch("/expenses/" + id, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed");
+      window.UI.notify("Expense archived.", "success");
+      loadExpenses();
+    } catch (e) {
+      window.UI.notify("Archive failed.", "error");
+    }
+  };
+
+  window.restoreExpense = async function (id) {
+    try {
+      const res = await fetch("/expenses/" + id + "/restore", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+      window.UI.notify(
+        data.status === "not archived" ? "That expense was not archived." : "Expense restored.",
+        "success");
+      loadExpenses();
+    } catch (e) {
+      window.UI.notify(e.message || "Restore failed.", "error");
+    }
+  };
+
+  // See challans.html: inline onchange handlers resolve in the global scope.
+  window.loadExpenses = loadExpenses;
+
+  restoreExpenseFilters();
+  loadCategories();
+  loadExpenseHistory();
+  if (window.UI.applySearchDeepLink) window.UI.applySearchDeepLink("exp-search");
+  loadExpenses();
+  // Searchable dropdown on the table filter (click empty box → everything
+  // the text search matches: payees, categories and payment modes).
+  if (window.UI.searchSuggest) {
+    window.UI.searchSuggest(document.getElementById("exp-search"), () => {
+      const out = new Set();
+      (allExpenses || []).forEach((e) => {
+        const p = String(e.payee || "").trim();
+        if (p && p !== "—") out.add(p);
+        if (e.category_name) out.add(String(e.category_name));
+        if (e.payment_mode) out.add(String(e.payment_mode).toLowerCase());
+      });
+      return Array.from(out);
+    });
+  }
+  if (window.location.hash.includes("new=1")) window.openNewExpenseForm();
+})();
+</script>

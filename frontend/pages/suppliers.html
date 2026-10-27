@@ -1,0 +1,375 @@
+<!-- Suppliers -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h2 style="font-size: 18px; font-weight: 600;">Suppliers</h2>
+    <button class="btn btn-primary" onclick="openNewSupplierForm()">+ Add Supplier</button>
+  </div>
+
+  <div id="sup-form" style="display:none; border-top:1px solid var(--color-border); padding-top:16px; margin-bottom:16px;">
+    <h4 id="sup-form-title" style="font-size:14px; font-weight:600; margin-bottom:12px;">New Supplier</h4>
+    <form onsubmit="saveSupplier(event)" id="new-sup-form">
+      <div class="form-row">
+        <div class="form-group"><label>Name</label><input id="sup-name" list="sup-name-list" autocomplete="off" required /><datalist id="sup-name-list"></datalist>
+          <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
+            Type to see existing suppliers — same name with different contact/GST is a different ledger, so check before saving.
+          </small>
+          <div id="sup-dup-warn" style="display:none; font-size:12px; color:var(--color-warning); margin-top:4px;"></div>
+        </div>
+        <div class="form-group"><label>Contact</label><input id="sup-contact" required /></div>
+        <div class="form-group"><label>Company</label><input id="sup-company" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Email</label><input id="sup-email" type="email" /></div>
+        <div class="form-group"><label>GST No</label><input id="sup-gst" /></div>
+        <div class="form-group"><label>PAN No</label><input id="sup-pan" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Address</label><input id="sup-addr" /></div>
+        <div class="form-group"><label>Bank Account</label><input id="sup-acc" /></div>
+        <div class="form-group"><label>IFSC</label><input id="sup-ifsc" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Contact 2</label><input id="sup-contact2" /></div>
+        <div class="form-group"><label>Bank Name</label><input id="sup-bankname" /></div>
+        <div class="form-group"><label>Notes</label><input id="sup-notes" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Opening Balance</label><input id="sup-bal" type="number" step="0.01" value="0" /></div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:8px;">
+        <button type="submit" class="btn btn-primary" id="sup-save-btn">Save</button>
+        <button type="button" class="btn btn-danger-outline" onclick="cancelSupplierForm()">Cancel</button>
+      </div>
+    </form>
+    <div id="sup-msg" style="font-size:13px; margin-top:10px; color: var(--color-text-muted);"></div>
+  </div>
+</div>
+
+<div class="card" id="sup-detail-card" style="display:none;">
+  <h3>Supplier Details</h3>
+  <div id="sup-detail-body" style="font-size:14px; line-height:1.8;"></div>
+  <div style="margin-top:10px;">
+    <button class="btn btn-danger-outline btn-sm" onclick="document.getElementById('sup-detail-card').style.display='none'">Close</button>
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+    <h3 style="margin:0;">Supplier List</h3>
+    <input id="sup-search" type="search" placeholder="Search name, company, contact, email, GST…"
+      oninput="filterSuppliers()"
+      style="padding:8px 12px; border:1px solid var(--color-border); border-radius:6px; font-size:14px; min-width:260px;" />
+    <button class="btn btn-secondary btn-sm" type="button" onclick="resetSupplierFilters()" title="Clear the search box">↺ Reset</button>
+  </div>
+  <div id="sup-table"></div>
+  <p id="sup-count" style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"></p>
+</div>
+
+<script>
+(function(){
+  let editingSupplierId = null;
+  let allSuppliers = [];
+  let supSort = { key: null, dir: 1 };
+
+  window.setSupSort = function (key) {
+    if (supSort.key === key) supSort.dir = supSort.dir === 1 ? -1 : 1;
+    else { supSort.key = key; supSort.dir = 1; }
+    window.filterSuppliers();
+  };
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function supDetailGrid(s) {
+    const row = (k, v) => "<span style='color:var(--color-text-muted);'>" + k + "</span><span>" + esc(v == null || v === "" ? "—" : v) + "</span>";
+    return "<div style='display:grid; grid-template-columns: 130px 1fr 130px 1fr; gap:4px 12px; padding:8px 0; font-size:13px;'>" +
+      row("Email", s.email) + row("Address", s.address) +
+      row("IFSC", s.ifsc_code) + row("Outstanding", s.outstanding_balance != null ? s.outstanding_balance : "0") +
+      row("Supplier ID", s.supplier_id) + row("Contact 2", s.contact_number_2) +
+      row("Bank Name", s.bank_detail) + row("Notes", s.notes) +
+      "</div>";
+  }
+
+  window.toggleSupDetail = function (id, btn) {
+    const detailRow = document.getElementById("sup-detail-" + id);
+    if (!detailRow) return;
+    const open = detailRow.style.display !== "none";
+    detailRow.style.display = open ? "none" : "table-row";
+    if (btn) btn.textContent = open ? "+" : "−";
+  };
+
+  function renderSupplierTable(list) {
+    const container = document.getElementById("sup-table");
+    if (!container) return;
+    const sorted = (window.UI.sortRows ? window.UI.sortRows(list, supSort.key, supSort.dir) : (list || []));
+    const arrow = k => (window.UI.sortArrow ? window.UI.sortArrow(supSort, k) : "");
+    const th = (k, label) => `<th onclick="setSupSort('${k}')" style="cursor:pointer; user-select:none;" title="Sort by ${label}">${label}${arrow(k)}</th>`;
+    if (!sorted || !sorted.length) {
+      container.innerHTML = "<div class='table-wrap'><table><thead><tr><th></th><th>Name</th><th>Company</th><th>Contact</th><th>GST</th><th>PAN</th><th>Bank Acc</th><th>Opening Bal</th><th>Actions</th></tr></thead><tbody><tr><td colspan='9'>No suppliers found.</td></tr></tbody></table></div>";
+    } else {
+      let html = `<div class='table-wrap'><table><thead><tr><th></th>${th("name", "Name")}${th("company_name", "Company")}${th("contact_number", "Contact")}${th("gst_no", "GST")}${th("pan_no", "PAN")}${th("account_no", "Bank Acc")}${th("opening_balance", "Opening Bal")}<th>Actions</th></tr></thead><tbody>`;
+      sorted.forEach(s => {
+        const bal = (s.opening_balance != null ? s.opening_balance : (s.outstanding_balance || 0));
+        html += "<tr>" +
+          `<td><button class="btn btn-sm btn-secondary" onclick="toggleSupDetail(${s.id}, this)" title="Show more details">+</button></td>` +
+          `<td>${esc(s.name || "")}</td>` +
+          `<td>${esc(s.company_name || "—")}</td>` +
+          `<td>${esc(s.contact_number || "")}</td>` +
+          `<td>${esc(s.gst_no || "—")}</td>` +
+          `<td>${esc(s.pan_no || "—")}</td>` +
+          `<td>${esc(s.account_no || "—")}</td>` +
+          `<td>${window.UI.money(bal)}</td>` +
+          `<td><span class="row-actions"><button class="btn btn-sm btn-info" onclick="viewSupplier(${s.id})">View</button><button class="btn btn-sm btn-warn" onclick="editSupplier(${s.id})">Edit</button><button class="btn btn-sm btn-danger" onclick="deleteSupplier(${s.id})">Delete</button></span></td>` +
+          "</tr>";
+        html += `<tr id="sup-detail-${s.id}" style="display:none; background:#f5f8fc;"><td></td><td colspan="8">${supDetailGrid(s)}</td></tr>`;
+      });
+      html += "</tbody></table></div>";
+      container.innerHTML = html;
+    }
+    const count = document.getElementById("sup-count");
+    if (count) count.textContent = "Showing " + (list || []).length + " of " + allSuppliers.length + " suppliers";
+  }
+
+  window.resetSupplierFilters = function () {
+    document.getElementById("sup-search").value = "";
+    window.filterSuppliers();
+  };
+
+  window.filterSuppliers = function () {
+    const q = (document.getElementById("sup-search").value || "").trim().toLowerCase();
+    if (!q) { renderSupplierTable(allSuppliers); return; }
+    const filtered = allSuppliers.filter(s => [s.name, s.company_name, s.contact_number, s.email, s.gst_no, s.pan_no, s.address, s.account_no, s.ifsc_code]
+      .map(v => String(v == null ? "" : v).toLowerCase()).some(v => v.includes(q)));
+    renderSupplierTable(filtered);
+  };
+
+  async function loadSuppliers() {
+    try {
+      const data = await window.UI.api("/suppliers");
+      allSuppliers = data || [];
+      renderSupNameSuggestions();
+      checkSupDuplicate();
+      const q = document.getElementById("sup-search");
+      if (q && q.value) { window.filterSuppliers(); } else { renderSupplierTable(allSuppliers); }
+    } catch (e) {
+      console.error("Suppliers", e);
+      document.getElementById("sup-table").innerHTML = "<p>Failed to load.</p>";
+    }
+  }
+
+  const supNormName = s => String(s == null ? "" : s).trim().replace(/\s+/g, " ").toLowerCase();
+
+  function renderSupNameSuggestions() {
+    const dl = document.getElementById("sup-name-list");
+    if (!dl) return;
+    dl.innerHTML = (allSuppliers || []).map(s => {
+      const sub = [s.company_name, s.contact_number, s.gst_no].filter(Boolean).join(", ");
+      return `<option value="${esc(s.name || "")}"${sub ? ` label="${esc(sub)}"` : ""}></option>`;
+    }).join("");
+  }
+
+  function findSupDuplicates() {
+    const name = supNormName(document.getElementById("sup-name").value);
+    const contact = (document.getElementById("sup-contact").value || "").trim();
+    const gst = (document.getElementById("sup-gst").value || "").trim().toUpperCase();
+    if (!name && !contact && !gst) return [];
+    return (allSuppliers || []).filter(s => {
+      if (editingSupplierId != null && String(s.id) === String(editingSupplierId)) return false;
+      if (name && supNormName(s.name) === name) return true;
+      if (contact && (s.contact_number || "").trim() === contact) return true;
+      if (gst && (s.gst_no || "").trim().toUpperCase() === gst) return true;
+      return false;
+    });
+  }
+
+  function checkSupDuplicate() {
+    const warn = document.getElementById("sup-dup-warn");
+    if (!warn) return [];
+    const dups = findSupDuplicates();
+    if (!dups.length || editingSupplierId != null) { warn.style.display = "none"; warn.textContent = ""; return []; }
+    warn.style.display = "block";
+    warn.textContent = "Possible duplicate: " + dups.slice(0, 3).map(s =>
+      `"${s.name}"${s.company_name ? " — " + s.company_name : ""}${s.contact_number ? " (" + s.contact_number + ")" : ""}`
+    ).join("; ") + " — saving creates a separate ledger.";
+    return dups;
+  }
+
+  function fillForm(d) {
+    document.getElementById("sup-name").value = d.name || "";
+    document.getElementById("sup-company").value = d.company_name || "";
+    document.getElementById("sup-contact").value = d.contact_number || "";
+    document.getElementById("sup-email").value = d.email || "";
+    document.getElementById("sup-gst").value = d.gst_no || "";
+    document.getElementById("sup-pan").value = d.pan_no || "";
+    document.getElementById("sup-addr").value = d.address || "";
+    document.getElementById("sup-acc").value = d.account_no || "";
+    document.getElementById("sup-ifsc").value = d.ifsc_code || "";
+    document.getElementById("sup-contact2").value = d.contact_number_2 || "";
+    document.getElementById("sup-bankname").value = d.bank_detail || "";
+    document.getElementById("sup-notes").value = d.notes || "";
+    document.getElementById("sup-bal").value = (d.opening_balance != null ? d.opening_balance : 0);
+  }
+
+  window.openNewSupplierForm = function () {
+    editingSupplierId = null;
+    document.getElementById("new-sup-form").reset();
+    document.getElementById("sup-bal").value = "0";
+    document.getElementById("sup-form-title").textContent = "New Supplier";
+    document.getElementById("sup-save-btn").textContent = "Save";
+    document.getElementById("sup-msg").textContent = "";
+    document.getElementById("sup-form").style.display = "block";
+    document.getElementById("sup-name").focus();
+  };
+
+  window.cancelSupplierForm = function () {
+    editingSupplierId = null;
+    document.getElementById("new-sup-form").reset();
+    document.getElementById("sup-save-btn").textContent = "Save";
+    document.getElementById("sup-form-title").textContent = "New Supplier";
+    document.getElementById("sup-msg").textContent = "";
+    document.getElementById("sup-form").style.display = "none";
+  };
+
+  window.saveSupplier = async function (event) {
+    if (event) event.preventDefault();
+    const __release = window.UI.submitGuard(event);
+    if (!__release) return;
+    window.UI.clearFieldErrors(document.getElementById("new-sup-form"));
+    const SUP_FIELDS = { name: "sup-name", company_name: "sup-company", contact_number: "sup-contact", email: "sup-email", gst_no: "sup-gst", pan_no: "sup-pan", address: "sup-addr", account_no: "sup-acc", ifsc_code: "sup-ifsc", contact_number_2: "sup-contact2", bank_detail: "sup-bankname", notes: "sup-notes", opening_balance: "sup-bal" };
+    let __detail = null;
+    const payload = {
+      name: document.getElementById("sup-name").value,
+      company_name: document.getElementById("sup-company").value,
+      contact_number: document.getElementById("sup-contact").value,
+      email: document.getElementById("sup-email").value,
+      gst_no: document.getElementById("sup-gst").value,
+      pan_no: document.getElementById("sup-pan").value,
+      address: document.getElementById("sup-addr").value,
+      account_no: document.getElementById("sup-acc").value,
+      ifsc_code: document.getElementById("sup-ifsc").value,
+      contact_number_2: document.getElementById("sup-contact2").value,
+      bank_detail: document.getElementById("sup-bankname").value,
+      notes: document.getElementById("sup-notes").value,
+      opening_balance: parseFloat(document.getElementById("sup-bal").value) || 0,
+    };
+    const msg = document.getElementById("sup-msg");
+    try {
+      let res;
+      if (editingSupplierId == null) {
+        const dups = checkSupDuplicate();
+        if (dups.length && !confirm("Possible duplicate supplier:\n" +
+            dups.slice(0, 3).map(s => `"${s.name}"${s.company_name ? " — " + s.company_name : ""}${s.contact_number ? " (" + s.contact_number + ")" : ""}`).join("\n") +
+            "\n\nOK = create a separate ledger anyway.\nCancel = go back and check.")) { __release(); return; }
+        res = await fetch("/suppliers", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+      } else {
+        res = await fetch("/suppliers/" + editingSupplierId, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+      }
+      const data = await res.json();
+      if (!res.ok) { __detail = data.detail; throw new Error(window.UI.formatError(data, "Failed")); }
+      msg.textContent = editingSupplierId == null ? "Supplier saved." : "Supplier updated.";
+      msg.style.color = "var(--color-success)";
+      cancelSupplierForm();
+      loadSuppliers();
+      __release();
+    } catch (e) {
+      if (!window.UI.fieldError(document.getElementById("new-sup-form"), __detail, SUP_FIELDS)) {
+        msg.textContent = (e.message || "Error");
+      } else {
+        msg.textContent = "Please fix the highlighted fields.";
+      }
+      msg.style.color = "var(--color-danger)";
+      __release();
+    }
+  };
+
+  window.viewSupplier = async function (id) {
+    const card = document.getElementById("sup-detail-card");
+    const body = document.getElementById("sup-detail-body");
+    try {
+      const d = await window.UI.api("/suppliers/" + id);
+      body.innerHTML =
+        "<div style='display:grid; grid-template-columns: 160px 1fr; gap:4px 12px;'>" +
+        "<strong>ID</strong><span>" + esc(d.id) + " (" + esc(d.supplier_id || "") + ")</span>" +
+        "<strong>Name</strong><span>" + esc(d.name) + "</span>" +
+        "<strong>Company</strong><span>" + esc(d.company_name || "—") + "</span>" +
+        "<strong>Contact</strong><span>" + esc(d.contact_number || "—") + "</span>" +
+        "<strong>Email</strong><span>" + esc(d.email || "—") + "</span>" +
+        "<strong>GST</strong><span>" + esc(d.gst_no || "—") + "</span>" +
+        "<strong>PAN</strong><span>" + esc(d.pan_no || "—") + "</span>" +
+        "<strong>Address</strong><span>" + esc(d.address || "—") + "</span>" +
+        "<strong>Bank A/c</strong><span>" + esc(d.account_no || "—") + "</span>" +
+        "<strong>IFSC</strong><span>" + esc(d.ifsc_code || "—") + "</span>" +
+        "<strong>Contact 2</strong><span>" + esc(d.contact_number_2 || "—") + "</span>" +
+        "<strong>Bank Name</strong><span>" + esc(d.bank_detail || "—") + "</span>" +
+        "<strong>Notes</strong><span>" + esc(d.notes || "—") + "</span>" +
+        "<strong>Opening Bal</strong><span>" + esc(d.opening_balance != null ? d.opening_balance : "0") + "</span>" +
+        "<strong>Outstanding</strong><span>" + esc(d.outstanding_balance != null ? d.outstanding_balance : "0") + "</span>" +
+        "</div>";
+      card.style.display = "block";
+      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (e) {
+      body.innerHTML = "<p style='color:var(--color-danger)'>Could not load details: " + esc(e.message || e) + "</p>";
+      card.style.display = "block";
+    }
+  };
+
+  window.editSupplier = async function (id) {
+    const msg = document.getElementById("sup-msg");
+    try {
+      const d = await window.UI.api("/suppliers/" + id);
+      editingSupplierId = id;
+      fillForm(d);
+      document.getElementById("sup-form-title").textContent = "Edit Supplier #" + id;
+      document.getElementById("sup-save-btn").textContent = "Update";
+      msg.textContent = "Editing supplier ID: " + id + " — all saved details loaded below.";
+      msg.style.color = "var(--color-primary)";
+      document.getElementById("sup-form").style.display = "block";
+    document.getElementById("sup-name").focus();
+      document.getElementById("sup-detail-card").style.display = "none";
+    } catch (e) {
+      msg.textContent = "Could not load details: " + (e.message || e);
+      msg.style.color = "var(--color-danger)";
+    }
+  };
+
+  window.deleteSupplier = async function (id) {
+    if (!confirm("Delete this supplier?")) return;
+    const msg = document.getElementById("sup-msg");
+    try {
+      const res = await fetch("/suppliers/" + id, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed");
+      msg.textContent = "Supplier deleted.";
+      msg.style.color = "var(--color-success)";
+      loadSuppliers();
+    } catch (e) {
+      msg.textContent = "Delete failed.";
+      msg.style.color = "var(--color-danger)";
+    }
+  };
+
+  // Alias for the global Refresh button in the top header.
+  window.loadSuppliers = loadSuppliers;
+
+  if (window.UI.applySearchDeepLink) window.UI.applySearchDeepLink("sup-search");
+  // Searchable dropdown on the table filter (click empty box → everything
+  // the text search matches: names, companies and contact numbers).
+  if (window.UI.searchSuggest) {
+    window.UI.searchSuggest(document.getElementById("sup-search"), () => {
+      const out = new Set();
+      allSuppliers.forEach((s) => {
+        if (s.name) out.add(String(s.name));
+        if (s.company_name) out.add(String(s.company_name));
+        if (s.contact_number) out.add(String(s.contact_number));
+      });
+      return Array.from(out);
+    });
+  }
+  ["sup-name", "sup-contact", "sup-gst"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el.dataset.dupBound) { el.dataset.dupBound = "1"; el.addEventListener("input", () => checkSupDuplicate()); }
+  });
+  loadSuppliers();
+  if (window.location.hash.includes("new=1")) window.openNewSupplierForm();
+})();
+</script>

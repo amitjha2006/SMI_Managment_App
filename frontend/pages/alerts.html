@@ -1,0 +1,77 @@
+<!-- Alerts -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <h2 style="font-size: 18px; font-weight: 600; margin:0;">🔔 Alerts</h2>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-secondary btn-sm" onclick="loadAlerts()">Refresh</button>
+      <button class="btn btn-danger btn-sm" id="alerts-clear-btn" onclick="clearAlerts()">Clear All</button>
+    </div>
+  </div>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-bottom:12px;">System and entry errors, newest first. The log keeps the last 100.</p>
+  <div id="alerts-table"></div>
+  <p id="alerts-count" style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"></p>
+</div>
+
+<script>
+(function(){
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function statusBadge(st) {
+    const s = String(st || "");
+    const cls = s === "auth-failed" ? "badge-cancelled" : (s === "client-error" ? "badge-warning" : "badge-confirmed");
+    return `<span class="badge ${cls}">${esc(s.replace(/_/g, " ") || "—")}</span>`;
+  }
+
+  async function loadAlerts() {
+    try {
+      const data = await window.UI.api("/notifications/recent?limit=100");
+      const rows = (data || []).map(n => ({
+        at: window.UI.dateWithTime(n.at, n.at),
+        atKey: window.UI.tsKey(n.at),
+        type: statusBadge(n.status),
+        message: esc(n.message || ""),
+        detail: esc(n.error || n.recipient || "—"),
+      }));
+      const container = document.getElementById("alerts-table");
+      if (container && window.UI.renderTable) {
+        window.UI.renderTable(container, rows, [
+          {key:"at",label:"Time"},{key:"type",label:"Type"},
+          {key:"message",label:"Message"},{key:"detail",label:"Detail"}
+        ], { sortable: false, sortValue: { at: r => r.atKey } });
+      }
+      document.getElementById("alerts-count").textContent = `Showing ${rows.length} of last 100`;
+      // mark all read
+      try {
+        const latest = (data || []).reduce((m, n) => Math.max(m, n.id || 0), 0);
+        localStorage.setItem("mf_alerts_seen", String(latest));
+      } catch (e) {}
+      if (window.App && window.App.refreshAlertBadge) window.App.refreshAlertBadge();
+      // Clear button is admin-only
+      const me = window.Auth ? window.Auth.getUser() : null;
+      const clearBtn = document.getElementById("alerts-clear-btn");
+      if (clearBtn) clearBtn.style.display = (me && String(me.role) === "admin") ? "" : "none";
+    } catch (e) {
+      console.error("Alerts", e);
+      document.getElementById("alerts-table").innerHTML = "<p>Failed to load.</p>";
+    }
+  }
+  window.loadAlerts = loadAlerts;
+
+  window.clearAlerts = async function () {
+    if (!confirm("Clear all alerts? This cannot be undone.")) return;
+    try {
+      // UI.api carries the auth token; a bare fetch does not and the server
+      // answers 401, so clearing used to fail silently every time.
+      await window.UI.api("/notifications/recent", { method: "DELETE" });
+      window.UI.notify("Alerts cleared", "success");
+      loadAlerts();
+    } catch (e) {
+      window.UI.notify(e.message || "Failed", "error");
+    }
+  };
+
+  loadAlerts();
+})();
+</script>

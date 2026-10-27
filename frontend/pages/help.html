@@ -1,0 +1,714 @@
+<!-- Help -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+    <h2 style="font-size: 18px; font-weight: 600; margin:0;">❓ Help</h2>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <input id="help-search" type="search" placeholder="Search help, e.g. restore, rate, archive…"
+             style="min-width:260px;" autocomplete="off" />
+      <button class="btn btn-secondary btn-sm" type="button" onclick="clearHelpSearch()">Clear</button>
+      <button class="btn btn-secondary btn-sm" type="button" onclick="expandAllHelp(true)">Expand all</button>
+      <button class="btn btn-secondary btn-sm" type="button" onclick="expandAllHelp(false)">Collapse all</button>
+    </div>
+  </div>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-bottom:12px;">
+    Guidance for every part of the system. Search filters the sections as you type.
+    <span id="help-count" style="margin-left:6px;"></span>
+  </p>
+  <div id="help-results"></div>
+  <div id="help-body">
+
+    <details class="help-topic" open>
+      <summary>Getting started — the everyday flow</summary>
+      <div class="help-body">
+        <ol>
+          <li><strong>Master data first.</strong> Add customers, suppliers, raw materials and products before recording anything.</li>
+          <li><strong>Buy stock.</strong> Purchase invoices record what you owe suppliers; supplier payments reduce it.</li>
+          <li><strong>Produce.</strong> Production entries consume raw material and create finished-goods stock.</li>
+          <li><strong>Sell.</strong> A challan is created as a <em>draft</em>. Confirming it deducts finished stock and raises the customer's dues. Dispatch, then mark delivered.</li>
+          <li><strong>Collect money.</strong> Payments against a challan reduce its balance and the customer's outstanding.</li>
+        </ol>
+        <p>A challan only becomes a receivable when it is <strong>confirmed</strong>. Drafts are safe to experiment with and can be deleted outright.</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Product categories — what they are for</summary>
+      <div class="help-body">
+        <p>A category is a <strong>label shared by products</strong>, picked from
+          a fixed master list (Products → Categories) instead of typed freely,
+          so every product groups the same way everywhere.</p>
+        <ol>
+          <li><strong>Assign it where the product is created.</strong> The product form's
+            <em>Category</em> dropdown lists the master list; choose
+            <em>+ New category</em> the first time you need one.</li>
+          <li><strong>Filter the product list.</strong> The <em>All categories</em>
+            dropdown above the product table shows only that category, and the
+            search box also matches category names.</li>
+          <li><strong>Group reports.</strong> Stock Analysis groups figures by
+            category, and the category table shows how many products sit in each.</li>
+        </ol>
+        <p>Manage the list itself (add, rename, deactivate, delete) in the
+          <strong>Categories</strong> card. Deactivated categories disappear from
+          pickers but keep their existing products grouped under them.</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Payroll</summary>
+      <div class="help-body">
+        <p>Payroll is on its own page. The monthly run is deliberately
+          <strong>two steps</strong>: choose a month, press <em>Preview month</em>,
+          read the figures, then press <em>Run payroll</em>. Nothing is written
+          until you press Run, so a salary entered wrongly can be spotted before
+          everybody has been paid.</p>
+
+        <p><strong>How net pay is worked out</strong></p>
+        <p style="font-family:monospace; background:var(--color-bg); padding:8px 10px; border-radius:4px;">
+          net pay = salary + allowances &minus; deductions &minus; advance recovered
+        </p>
+        <p>You do <strong>not</strong> type the net pay. The app calculates it
+          and will refuse a figure that disagrees with the formula, so the
+          register can never hold a total which does not match its own inputs.</p>
+
+        <p><strong>Advances are recovered automatically</strong>, oldest first,
+          whenever a run happens. Recovery is capped so net pay can never go
+          below zero: if someone owes more in advance than the month's pay can
+          cover, the remainder carries forward and the preview says so rather
+          than producing a negative paycheque.</p>
+
+        <p><strong>A month can only be paid once.</strong> Anyone already paid
+          for that month is shown as <em>Paid</em> and skipped, so pressing Run
+          twice cannot pay anyone twice. This is enforced by the database, not
+          just by the screen.</p>
+
+        <p><strong>Attendance</strong> is recorded per person per day, and
+          re-marking a day corrects it rather than adding a second row. Attendance
+          is shown alongside each employee in the preview for information; it
+          does <em>not</em> change the amount paid under this formula.</p>
+
+        <p><strong>Leave</strong> is requested per person and needs approving or
+          rejecting. Days are counted for you from the dates given.</p>
+
+        <p><strong>Deductions</strong> are recorded against a month. A run marks
+          them as applied instead of deleting them, so the register still
+          explains where a figure went.</p>
+
+        <p>Only a Manager or Admin can run payroll or record advances and
+          deductions &mdash; this is separate from ordinary employee editing, which
+          data entry can do.</p>
+        <p>On a shared computer, use <strong>Switch User</strong> in the top bar when handing over — signing in as yourself keeps the audit history honest about who did what. An idle session also signs itself out after the minutes set in Settings &rsaquo; Session Lock (0 disables).</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Challan vs Sales Tax Invoice</summary>
+      <div class="help-body">
+        <p>These are <strong>two different documents</strong> and the difference matters for tax.</p>
+        <table style="width:100%; font-size:13px; margin:8px 0; border-collapse:collapse;">
+          <tr style="text-align:left;">
+            <th style="padding:4px 6px; border:1px solid var(--color-border);">Delivery Challan</th>
+            <th style="padding:4px 6px; border:1px solid var(--color-border);">Sales Tax Invoice</th>
+          </tr>
+          <tr>
+            <td style="padding:6px; border:1px solid var(--color-border);">Proves the goods left</td>
+            <td style="padding:6px; border:1px solid var(--color-border);">The final bill, with GST</td>
+          </tr>
+          <tr>
+            <td style="padding:6px; border:1px solid var(--color-border);"><strong>Not</strong> a tax document</td>
+            <td style="padding:6px; border:1px solid var(--color-border);">Needed for your customer to claim input credit</td>
+          </tr>
+          <tr>
+            <td style="padding:6px; border:1px solid var(--color-border);">No GST shown</td>
+            <td style="padding:6px; border:1px solid var(--color-border);">Taxable value, GST rate, CGST/SGST or IGST</td>
+          </tr>
+        </table>
+
+        <p><strong>To create a sales invoice</strong>, open a challan and use the
+          <strong>Sales Invoice&hellip;</strong> button next to <em>Print Challan</em>. It becomes
+          <em>Print Sales Invoice</em> once one exists. A challan can only ever be invoiced
+          once, so you cannot double-bill the same delivery.</p>
+        <p>The <strong>WhatsApp ↗</strong> button beside it opens WhatsApp with the invoice summary prefilled — total and balance due — addressed to the customer's phone number. Sending, and attaching the PDF, stay manual; if the customer has no usable number the button says so instead. The <strong>PDF</strong> button downloads the same invoice as a file, ready to attach — with the company logo and Hindi names intact. The <strong>Email PDF</strong> button mails that file: the address box opens prefilled with the customer email on file, so leaving it blank sends it there; typing an address overrides it for that send only.</p>
+
+        <p><strong>The total does not change.</strong> GST is taken <em>out of</em> the
+          challan amount rather than added on top. A challan of 1150.00 at 18% becomes
+          1000.00 of goods plus 150.00 of tax &mdash; the sales invoice still totals 1150.00,
+          so your customer is never re-billed.</p>
+
+        <p><strong>Before you can invoice, two things must be set</strong> (the Settings
+          page lists anything still missing):</p>
+        <ul>
+          <li>Each product needs a <strong>GST rate</strong> on the Products page. Until
+            one is set, a sales invoice is refused rather than issued with no tax &mdash; and
+            no product is defaulted to a guess.</li>
+          <li>Your <strong>company GSTIN</strong> must be in the Company Profile. A tax
+            invoice without it is not valid, so one will not be issued.</li>
+        </ul>
+        <p>An <strong>HSN code</strong> per product is optional here but worth filling in
+          &mdash; your customer's accountant may ask for it. Typing the product name
+          suggests the code automatically; anything you pick or type yourself always wins.</p>
+        <details id="hsn-ref">
+          <summary style="cursor:pointer; font-weight:600;">Full HSN list used by the dropdowns</summary>
+          <div style="display:flex; gap:24px; flex-wrap:wrap; margin-top:8px;">
+            <div><h4>Products</h4><div id="hsn-ref-products">Loading&hellip;</div></div>
+            <div><h4>Raw materials</h4><div id="hsn-ref-raw">Loading&hellip;</div></div>
+          </div>
+        </details>
+
+        <p><strong>Payments stay on the challan</strong>, not the sales invoice. That is
+          deliberate: one place tracks what you are owed, so a receivable cannot be
+          counted twice. The sales invoice shows the challan's balance read-only.</p>
+
+        <p><strong>Intra- or inter-state?</strong> This factory is registered in Bihar,
+          so a customer in another state needs the supply type set to
+          <em>Inter-state</em> in Settings &mdash; those invoices are charged IGST
+          instead of CGST + SGST. Left as <em>Intra-state</em>, a customer elsewhere
+          would be billed the wrong head of tax and could not claim their credit.</p>
+
+        <p>Only challans dated on or after the start date in Settings can be invoiced.
+          Earlier ones stay as delivery notes, so past deliveries are not re-billed.</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Archive, Restore and Delete</summary>
+      <div class="help-body">
+        <p>There are two ways to remove a record, and they are not interchangeable.</p>
+        <h4>Archive — the normal way</h4>
+        <ul>
+          <li>Hides the record from lists, but keeps its effect on stock, balances and reports.</li>
+          <li>Fully reversible — you can bring it back at any time.</li>
+          <li>Archived rows are dimmed and badged, so you can see them once you tick <strong>Show archived</strong>.</li>
+        </ul>
+        <h4>Archived records are read-only</h4>
+        <p>While a record is archived you cannot edit it, dispatch it, change its status or take a payment against it. This is deliberate: the archive exists to preserve a record exactly as it was. You will see <em>"This challan is archived. Restore it before making changes."</em> if you try.</p>
+        <h4>Restore</h4>
+        <p>Tick <strong>Show archived</strong>, then press <strong>Restore</strong> on the row. The record returns to the normal list and becomes editable again.</p>
+        <p>Restoring a <strong>payment</strong> also un-archives its parent challan or invoice, because a payment is only reachable through its parent. The app tells you when it does this. The reverse is not true: restoring a challan does not restore a separately archived payment.</p>
+        <h4>Delete — only for an unpaid draft</h4>
+        <p>The <strong>Delete</strong> button appears only on <strong>draft</strong> challans that have never been confirmed and have no payment. This is a permanent delete and cannot be undone, though the deletion itself is written to the audit history.</p>
+        <p>Once a challan is confirmed, stock and the customer's dues have already been posted, so deletion is refused and you should archive instead. The app explains which condition blocked it.</p>
+        <h4>Why archiving does not change totals</h4>
+        <p>Archiving never reverses money or stock, so archived documents keep counting in reports and balances. That is what makes it safe — and it is why nothing needs recalculating when you restore.</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Why am I asked for a reason?</summary>
+      <div class="help-body">
+        <p>Every <strong>edit</strong>, <strong>archive</strong>, <strong>restore</strong> and <strong>status change</strong> asks for a short note (at least 5 characters) before it is saved. The note is stored in the <strong>audit history</strong> beside who made the change and when, so months later "why was this rate changed?" has a real answer.</p>
+        <p>Normal work never asks: creating a challan, invoice, payment or expense needs no note. Imports don't ask either. The question appears only when something already recorded is being changed.</p>
+        <p>Tip: press <strong>Ctrl+Enter</strong> inside the note box to submit it. Cancelling the note box cancels the change — nothing is saved without a reason.</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Products and pack sizes (weights)</summary>
+      <div class="help-body">
+        <p>A product is sold in several pack sizes. The <strong>product</strong> is the thing you sell (for example <em>Shresth Chilli Masala</em>); each <strong>pack size</strong> is a weight of it (175g, 200g, 250g, 500g).</p>
+        <h4>Adding another weight to an existing product</h4>
+        <p>Type the <strong>same product name</strong> and the new weight. The app recognises the name and attaches the weight to the existing product instead of creating a duplicate. It then tells you which sizes were added and which were already present.</p>
+        <p>You can also press <strong>Edit</strong> on a product and use <strong>Add pack size</strong> in the panel that opens.</p>
+        <h4>Prices are per pack size</h4>
+        <p>Each size carries its own rate, because price per kg differs by pack. The Rate column on the products list shows one rate per size, aligned with the sizes beside it.</p>
+        <h4>Which rate is used</h4>
+        <p>When you add a challan line, the price is taken in this order:</p>
+        <ol>
+          <li>the rate typed on that line, if you entered one</li>
+          <li>otherwise the <strong>rate of that pack size</strong></li>
+          <li>otherwise the product's <strong>fallback rate</strong></li>
+        </ol>
+        <p>A fallback rate is a safety net, not a normal price. It is only used for a pack size left with no rate of its own, and the app warns you by name whenever that happens — in the product form, after saving a rate, and as a standing note in the Edit panel.</p>
+        <h4>Formulation — the mix ratio</h4>
+        <p>A mix masala can keep its <strong>formulation</strong>: each raw material with its share of the mix, totalling exactly 100%. Edit the product to add ingredients; the editor totals the shares live and shows the indicative cost per kg at today's purchase rates. The ratio is a mixing reference — it never moves stock — and clearing it is just saving an empty list.</p>
+        <p>Below the ratio, <strong>processing steps</strong> record how the mix is made, in order — free text like "Roast at 120°C for 20 min, then cool", each optionally tagged with its stage (roasting, grinding, mixing, packaging). When that product is picked on a new production entry, the ratio and steps show as guidance above the form; <strong>Apply formulation…</strong> fills the materials from the ratio for the target qty.</p>
+        <p>Every product also has its own <strong>Help button</strong>: an independent blank window for the formulation and process in plain words. It is shown while producing, alongside the ratio and steps above.</p>
+        <h4>Category</h4>
+        <p>Category comes from the fixed master list (Products &rsaquo; Categories), not typed freely — that is what keeps every product grouped the same way in reports. It affects no price, stock figure or report total; it is there so you can filter Stock Analysis by it and find products by name in the product list.</p>
+        <h4>Removing a pack size</h4>
+        <p>Press <strong>Edit</strong> on the product, then <strong>Remove</strong> beside the size. This retires it rather than deleting it: past challans and stock entries keep reading it, but it is no longer offered for anything new. The last size of a product cannot be removed — add the replacement first.</p>
+        <p>Typing the same name again later <strong>restores</strong> the retired size instead of creating a duplicate.</p>
+        <h4>Low-stock threshold per size</h4>
+        <p>Each pack size carries its own threshold in <strong>packets</strong>, set in the same Edit panel. Fall below it and the size joins the low-stock alerts on the dashboard, the Alerts page and the daily report mail. Zero (the default) only alerts when the size is fully out; retired sizes never alert.</p>
+        <h4>Changing a rate</h4>
+        <p>Press <strong>Edit</strong> on the product. Every pack size gets its own row with a <strong>Rate/kg</strong> box and a <strong>Save</strong> button, so you can change one weight without touching the others. The <strong>History</strong> button beside it shows every past rate with who changed it and when — useful when margins move and nobody remembers why.</p>
+        <ul>
+          <li>Rates can be changed at any time, and each stock movement keeps the rate it was valued at.</li>
+          <li><strong>Weights lock</strong> once a size has stock history. Changing a weight would silently restate historical stock, so the app refuses it and tells you the rate can still be changed.</li>
+          <li>Renaming a product onto another product's name is refused, and a weight in the product <em>name</em> (like "Shresth Chilli 5kg") is refused — put weights in packaging sizes instead.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Sales challans</summary>
+      <div class="help-body">
+        <ul>
+          <li><strong>Draft</strong> — being prepared. No stock or money effect. Safe to delete.</li>
+          <li><strong>Confirmed</strong> — stock deducted, customer owes the amount. Cannot be deleted.</li>
+          <li><strong>Partially paid / Paid</strong> — payments recorded against it.</li>
+          <li><strong>Closed</strong> — finished; no further changes.</li>
+        </ul>
+        <p>Use <strong>Dispatch</strong> to record the transporter, vehicle and date, then <strong>Mark Delivered</strong> when it arrives. A closed challan cannot be dispatched.</p>
+        <p>Payment is refused on a draft — confirm it first, because a draft is not yet a receivable.</p>
+        <p>A customer can carry a <strong>credit limit</strong> (set on the customer form, 0 = unlimited). Confirming a challan that would push their outstanding past it is refused with the shortfall — switch Editor Mode on to override, which is written to the audit history.</p>
+        <p>The <strong>Balance Due</strong> column is always total minus paid, and the customer's outstanding is the sum of their live challan balances plus any opening balance.</p>
+        <h4>Printing a challan for the customer</h4>
+        <p>Open any challan and press <strong>🖨 Print Challan</strong>. You get an A4 document with your letterhead, the customer's details, every product with its pack size, quantity, weight, rate and amount, the total written in words, space to sign, and your terms at the foot. Press <em>Print</em> in the browser dialog, or choose <em>Save as PDF</em> there to get a PDF file instead.</p>
+        <p>Your company name, address, GSTIN, phone, email and terms come from <strong>Settings &rsaquo; Company Profile</strong>. Anything left blank there simply does not print.</p>
+        <h4>Why an old challan never changes</h4>
+        <p>Each challan keeps its own private copy of your company details, the customer's details, and the product and pack-size name on every line. Editing any of those later does <strong>not</strong> alter a challan that already exists — a document somebody is holding stays exactly as it was issued. If a printed challan has a genuine mistake in it, archive it and raise a corrected one.</p>
+        <p>The one-time exception: the first time you save a company profile, challans created before then are filled in with those details so they do not print blank. Later saves leave them alone.</p>
+        <p>A challan with no recorded company details says so on the printout rather than showing an empty header, so a missing letterhead is never mistaken for a bug.</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Purchases, suppliers and payments</summary>
+      <div class="help-body">
+        <ul>
+          <li>A <strong>purchase invoice</strong> records goods received and what you owe the supplier.</li>
+          <li><strong>Transport Charges</strong> (freight) and <strong>Other Charges</strong> are your costing only: they never change what you owe the supplier. Each line shows its <strong>share of the charges in ₹</strong> (weight × ₹/kg — a 10 kg line and a 20 kg line split ₹100 as ₹33.33 and ₹66.67) plus <strong>Total Cost ₹/kg</strong> (rate + GST + the charge share), which is the same for every kg of the invoice.</li>
+          <li>The <strong>Total</strong> follows the goods value automatically, but you can type over it to follow the paper invoice — dues then key off your figure.</li>
+          <li>A <strong>supplier payment</strong> reduces the purchase-invoice balance and the supplier's outstanding. It cannot exceed the invoice's outstanding.</li>
+          <li>Supplier outstanding = opening balance + all purchase-invoice totals − all payments.</li>
+        </ul>
+        <p>Payments and invoices archive and restore like any other record.</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Production, raw material and finished stock</summary>
+      <div class="help-body">
+        <ul>
+          <li>A <strong>production entry</strong> turns raw material into finished goods in a chosen pack size.</li>
+          <li><strong>Target Qty</strong> is the plan — how much you intend to make. It moves no stock; the <strong>Actual</strong> column shows what really came out, as packets and kg (e.g. "200 pkts (50.00 kg)"). If an entry is saved with no output rows at all, the target stands in as the output so the run still records stock.</li>
+          <li>One batch can pack <strong>several sizes at once</strong> — add a row per size with its packets in the entry form. The batch keeps a single batch number; each size posts its own finished-stock movement from the same raw-material pool.</li>
+          <li><strong>Wrapper (pouch) weight</strong> is tracked per size: set each pouch's empty weight in the product editor, then pick the wrapper roll on the production form. The quantity fills itself (packets × pouch weight) and posts as ordinary raw-material consumption. Wrapper rolls are bought and stocked like any raw material in kg.</li>
+          <li><strong>Apply formulation…</strong> on the production form fills the consumed materials from the product's saved mix ratio, scaled to the Target Qty (50 kg at 40% → 20 kg) — replacing the rows already there. Rows stay editable afterwards, and the message states the scaled material cost.</li>
+          <li>Status moves <strong>draft → in progress → completed</strong>, or <strong>cancelled</strong>. It cannot go back to draft.</li>
+          <li>Each entry has <strong>stages</strong> (Roasting, Grinding, Mixing, Packaging) where you record input, output and wastage.</li>
+          <li><strong>Stage loss</strong> is worked out for you from the input and output you enter: loss = input − output, shown as a percentage of the input. You record the two real numbers and the percentage follows, so the two can never disagree.</li>
+          <li>A stage that reports more output than input is treated as zero loss rather than a negative figure — on roasting, grinding and mixing that combination is a data mistake, and it will not quietly reduce your totals. The <strong>packaging</strong> stage is the exception (see Packing gain below).</li>
+        </ul>
+        <h4>Two different kinds of loss</h4>
+        <p><strong>Stage loss</strong> is material lost while processing (roasting, grinding, mixing, packaging). It is recorded against the production entry and appears in the Category Summary on the Reports page.</p>
+        <p><strong>Finished-goods write-off</strong> is packets removed from finished stock after they were made — damaged, expired or broken. It is a stock movement in its own right and shows on the Stock Analysis page, not in the Category Summary.</p>
+        <p><strong>Stock Adjustments</strong> for finished goods are typed in <strong>packets</strong> by default — pick the size, type the count, and the "= kg" line shows the conversion using that size's own weight. The <strong>kg</strong> toggle is there for torn or loose stock. The movement history shows both figures ("10 pkt = 1 kg").</p>
+        <p>Wastage is reported as a share of the total material put into production, not as a share of final output. Loss compounds down a multi-stage workflow, so dividing by final output would overstate the rate considerably.</p>
+        <h4>Packing gain (packaging only)</h4>
+        <p>Packed output can legitimately weigh <strong>more</strong> than the loose masala that went in, because the pouches themselves add weight. When a packaging stage's output exceeds its input, the surplus is stored as <strong>packing gain</strong> — with zero wastage on that stage, and shown in its own Gain column on the entry and in the Category Summary. It is wrapper weight, not negative wastage, so it is never subtracted from loss totals. On the form the packaging row announces it ("Packing gain +X kg (wrapper)") as you type.</p>
+        <h4>Stock checks</h4>
+        <p><strong>Stock Analysis</strong> reconciles raw and finished stock against their movement ledgers, and highlights wastage. If a figure looks wrong, run it — it will tell you whether the ledger or the running balance has drifted.</p>
+        <p>Raw materials carry a threshold and reorder level; low stock raises an alert on the dashboard.</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Expenses</summary>
+      <div class="help-body">
+        <ul>
+          <li>Record expenses against a category (Raw Material, Packaging, Salary &amp; Wages, Transport, Utilities, Maintenance).</li>
+          <li>Expenses are filtered by the same search box and date range as everything else.</li>
+          <li>Archiving an expense hides it but keeps it in expense totals, for the audit trail.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Dashboard, Recent Transactions and global search</summary>
+      <div class="help-body">
+        <h4>Recent Transactions</h4>
+        <p>The dashboard list shows the newest records first across challans, purchases, payments and expenses. Expense rows show the expense <strong>description</strong> as their reference — that is the expense's name — with the payee beside it.</p>
+        <h4>Global search (top bar)</h4>
+        <p>Search covers customers, challans, purchase invoices, products, suppliers, <strong>payments and expenses</strong>. Receipts and payments are found by their <strong>RCPT-/PAY- code</strong> or party name; expenses by description, category or payee.</p>
+        <p>Opening a payment result jumps straight to that receipt or payment: the parent record opens with the exact row highlighted. An expense result filters the Expenses page to it — when several expenses share one description (monthly rent), each hit shows its <strong>date, amount and category</strong> so you pick the right month before opening.</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Reports, filters and the date range</summary>
+      <div class="help-body">
+        <h4>"Current FY only"</h4>
+        <p>The financial year runs <strong>1 April to 31 March</strong>. Ticking <strong>Current FY only</strong> sets the From date to the FY start and filters to this year.</p>
+        <p>The checkbox is <strong>entirely yours</strong>: it changes only when you click it. Setting a custom From/To date no longer switches it off, and your choice is remembered per page — including after navigating away and coming back.</p>
+        <h4>Filters remember themselves</h4>
+        <p>Date ranges and the "Show archived" toggle persist per page. <strong>Clear filter</strong> on the Reports page resets them deliberately.</p>
+        <h4>Refreshing</h4>
+        <p>The <strong>⟳ Refresh</strong> button in the top bar reloads the current page's data while keeping your filters. On pages that own their own data-loading routine it refreshes in place instead of reloading the page.</p>
+        <h4>Other reports</h4>
+        <ul>
+          <li><strong>Sales Trend</strong> — sales over time.</li>
+          <li><strong>Monthly Sales</strong> — a month-by-month pivot with year fill-in.</li>
+          <li><strong>Custom Reports</strong> — save your own column picks and filters, then run them from the sidebar.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Audit history</summary>
+      <div class="help-body">
+        <p>Every create, update, archive, restore, delete, status change, dispatch, delivery, payment, stock movement and rate change is recorded with who did it and when.</p>
+        <ul>
+          <li>Filter by <strong>module</strong> and <strong>action</strong> to narrow things down.</li>
+          <li>Press <strong>View</strong> on any row to see the <strong>Before</strong> and <strong>After</strong> values in a popup, with the user, timestamp and IP address.</li>
+          <li>Permanent deletes are recorded too — the audit row is written <em>before</em> the record is removed, so the deletion never vanishes from the trail.</li>
+        </ul>
+        <p>Requires the <strong>Audit view</strong> permission (Admin and Manager by default). It can be granted to other roles from the Users page.</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Roles and permissions</summary>
+      <div class="help-body">
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+          <thead><tr>
+            <th style="text-align:left; padding:6px; border-bottom:1px solid var(--color-border);">Role</th>
+            <th style="text-align:left; padding:6px; border-bottom:1px solid var(--color-border);">Can do</th>
+          </tr></thead>
+          <tbody>
+            <tr><td style="padding:6px;"><strong>Admin</strong></td><td style="padding:6px;">Everything, plus Users, Backup and Settings.</td></tr>
+            <tr><td style="padding:6px;"><strong>Manager</strong></td><td style="padding:6px;">All day-to-day work: create, edit, confirm, dispatch, collect, archive, restore. No user or system admin.</td></tr>
+            <tr><td style="padding:6px;"><strong>Data Entry</strong></td><td style="padding:6px;">Create and edit master data and documents. Cannot delete, approve, confirm, dispatch or collect payments.</td></tr>
+            <tr><td style="padding:6px;"><strong>Viewer</strong></td><td style="padding:6px;">Read-only. All write buttons are hidden and the server refuses writes.</td></tr>
+            <tr><td style="padding:6px;"><strong>Challan Entry</strong></td><td style="padding:6px;">Challans only: can view the challan list and create challans (with customer/product pickers). No payments, reports, stock, payroll, settings or user admin. For counter staff who only raise delivery notes.</td></tr>
+          </tbody>
+        </table>
+        <p>Some abilities are fixed role floors and cannot be granted away — for example a Viewer can never write, and Data Entry can never delete. Everything else is an <strong>individual permission</strong> (such as <em>Collect payment</em>, <em>Confirm challan</em>, <em>Restore record</em>) that an Admin can tick per role on the <strong>Users</strong> page.</p>
+        <p>If a button is missing, your role lacks the permission behind it. If a message says <em>"Manager access required"</em> or <em>"Permission required: …"</em>, that is the same thing seen from the server.</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Import and Export</summary>
+      <div class="help-body">
+        <ul>
+          <li>Import masters and transactions from Excel. Download a template first so the columns match. Import in dependency order: Customers → Suppliers → Raw Materials → Products → Purchase Invoices → Sales Challans → Customer Payments → Expenses → Employees.</li>
+          <li><strong>Customer Payments</strong> records receipts against challans already in the system — one row per payment with its own date. Draft, archived, unknown-challan and over-outstanding rows are skipped with the reason.</li>
+          <li>The preview shows what will be created or updated before anything is written, and reports per-row failures afterwards.</li>
+          <li>Export pulls data out as a spreadsheet for Excel or accounting.</li>
+        </ul>
+        <p><strong>Two formats, one set of figures.</strong> Every export offers
+          <em>Excel</em> and <em>PDF</em>. Both are produced from the same query, so
+          a PDF and its matching spreadsheet can never disagree &mdash; which is the
+          point, because a report whose two versions differ is worse than either
+          being wrong on its own.</p>
+        <p>The PDF is a real file you can email or keep, not a print dialog. It
+          repeats its column headings on every page and numbers its pages, so a
+          printed pack can be checked for missing sheets. Filtering to a range
+          with no matching rows still produces a valid PDF that says so, rather
+          than an error or an empty file.</p>
+        <p>On the Reports page, a PDF of a custom report records the source, the
+          date range and the column selection on the document itself &mdash; so it
+          is obvious later which period it covered.</p>
+        <p>Bulk import needs the <strong>Bulk import</strong> permission (Admin and Manager by default).</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Backup and restore</summary>
+      <div class="help-body">
+        <ul>
+          <li><strong>Backup Now + Save As</strong> (Admin only) copies the whole database, then asks where to keep that copy — e.g. a pen drive. The History below always keeps the in-app copy too.</li>
+          <li><strong>Backup folder</strong> in Settings &rsaquo; Backups changes where copies are stored (empty = default). Times are shown in IST (UTC+05:30).</li>
+          <li><strong>Download</strong> saves a copy of a backup to your computer. <strong>Download + Key</strong> saves a ZIP containing the backup <em>and</em> its secret key file — the key signs sign-in tokens, so keep the two together if you ever need the copy on another machine.</li>
+          <li><strong>Delete</strong> removes a backup and its key file. Manual backups are never auto-deleted.</li>
+          <li>Automatic backups run daily while the app is running; the sidebar footer shows the most recent one. The hour and how many auto copies to keep are set in <strong>Settings &rsaquo; Automatic Backups</strong>.</li>
+        </ul>
+        <h4>Restore</h4>
+        <p>Pressing <strong>Restore</strong> asks where the copy should go: the <strong>live database</strong> (replaces current data) or a <strong>custom path</strong> (a harmless copy for inspection, current data untouched).</p>
+        <ul>
+          <li>Before a live restore, the current database is automatically saved as a safety copy, so a wrong choice can be undone.</li>
+          <li>After a live restore, <strong>restart the app</strong> before doing anything else.</li>
+        </ul>
+        <p>The history lists only backups the app itself created. Copying a database file into <code>data/backups</code> by hand does not add it to the list.</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Product categories</summary>
+      <div class="help-body">
+        <p>Every product belongs to one category, and the category comes from a fixed list rather than being typed in. That is what makes the reports add up: free text quietly turns into <em>Dry Masala</em>, <em>dry masala</em> and <em>DRY MASALA</em>, and each one reports as a separate business line.</p>
+        <h4>Managing the list</h4>
+        <ul>
+          <li>The <strong>Categories</strong> card on the Products page lists them all, with how many products sit in each.</li>
+          <li>Add a category there, or from the <em>+ New category</em> option inside the Add Product form and the product editor.</li>
+          <li><strong>Rename</strong> changes the name everywhere at once — products, reports and the Analysis page all follow.</li>
+          <li><strong>Deactivate</strong> hides a category from new pickers but keeps it on the products that already use it, so history stays intact.</li>
+          <li><strong>Delete</strong> only works on an unused category. To retire one that products still use, deactivate it instead.</li>
+        </ul>
+        <h4>Nesting</h4>
+        <p>A category can sit under another using the <em>Under</em> picker. The reports show the parent in brackets, and a category with sub-categories cannot be deleted out from under them. Sub-grouping is a display convenience — totals are still counted per category.</p>
+        <h4>Reporting</h4>
+        <p>The <strong>Category Summary</strong> on the Reports page shows, for each category: revenue and its share of the total, quantity sold, total material processed, final output, finished stock in kg and at value, and stage loss. It answers which part of the business earns the most, which one is sitting on the most stock, and where the processing loss is concentrated.</p>
+        <p>Sales count only live, non-draft challans. Stock value is the finished-goods balance from the stock ledger valued at each pack size's own rate. Stage loss is the material lost at each production stage, as a share of the total processed. Finished-goods write-offs are not included — see <em>Production, raw material and finished stock</em>. A product with no category is still counted, under <em>(uncategorised)</em>, so nothing quietly disappears.</p>
+        <h4>Finding products by category</h4>
+        <p>The <strong>All categories</strong> dropdown above the product list narrows the table to one category, and combines with the search box.</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Settings and sharing</summary>
+      <div class="help-body">
+        <ul>
+          <li><strong>Share links</strong> publish a read-only dashboard view without needing a login. Revoke a link to close it.</li>
+          <li><strong>Dashboard</strong> can be customised — choose which sections appear.</li>
+          <li><strong>Automatic Backups</strong> sets the daily backup hour and how many auto copies to keep.</li>
+          <li><strong>Company Profile</strong> is the letterhead and terms printed on challans and invoices.</li>
+          <li><strong>Sales Invoices</strong> holds the invoice start date, number prefix and intra/inter-state supply type.</li>
+          <li><strong>Email</strong> configures alert mail and the automatic daily report (sections, schedule, recipients). The report can go <strong>daily or weekly</strong> (weekly picks a weekday); tick at least one section — an empty selection cannot be saved. Every fresh sign-in also mails the alert address, so a stolen password cannot be used quietly.</li>
+          <li>Application settings are Admin only.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Editor Mode</summary>
+      <div class="help-body">
+        <p>Editor Mode is a safety switch that must be turned on before <strong>anything</strong> in the system can be changed or removed.</p>
+        <h4>It is off when you sign in</h4>
+        <p>Every fresh sign-in starts with Editor Mode <strong>off</strong>, so you can never arrive already able to delete things. Look for the padlock button in the top bar: <em>🔒 Editor Mode: OFF</em>.</p>
+        <h4>Two separate checks</h4>
+        <p>Holding edit or delete permission is <strong>not</strong> enough on its own. Both must be true:</p>
+        <ol>
+          <li>your role has the permission, <em>and</em></li>
+          <li>you have switched Editor Mode on yourself.</li>
+        </ol>
+        <p>Switching it on grants nothing extra — it only removes the second lock. Role rules still apply exactly as before.</p>
+        <h4>What it covers</h4>
+        <p>Every change and every removal: editing a record, archiving, restoring, deleting, closing a challan, changing a status, editing a price, and changing users, permissions, settings or backups.</p>
+        <p>Two harmless things stay available so you are not forced into Editor Mode to tidy up: your dashboard layout and clearing the notification list. Saving the company profile and revoking a dashboard share link are also exempt — the first is admin-only configuration with no issued document at risk, the second only takes a link off the internet.</p>
+        <h4>Reading and viewing are never affected</h4>
+        <p>You can always browse, search, filter, view details and run reports with Editor Mode off. Only changes are blocked.</p>
+        <h4>It is recorded</h4>
+        <p>Switching Editor Mode on or off is written to the audit history, so you can see when it was used and by whom.</p>
+        <h4>"Editor Mode is off. Switch Editor Mode on…"</h4>
+        <p>You tried to change something while it was off. Use the padlock button in the top bar, then try again.</p>
+        <p>While it is off, the destructive and approval buttons on each row are dimmed. Pressing one does not change anything — instead a popup explains exactly why it is unavailable (Editor Mode off, or the record's state, such as a draft challan that must be confirmed before payment).</p>
+      </div>
+    </details>
+
+    <details class="help-topic">
+      <summary>Troubleshooting</summary>
+      <div class="help-body">
+        <h4>"This challan is archived. Restore it before making changes."</h4>
+        <p>You are trying to change an archived record. Tick <strong>Show archived</strong>, press <strong>Restore</strong>, then do your change.</p>
+        <h4>"Insufficient finished stock to confirm"</h4>
+        <p>Confirming a challan needs the stock to actually exist. Check <strong>Finished stock</strong> for that product and pack size, record the production run or an opening adjustment that supplies it, then confirm.</p>
+        <h4>A challan will not delete</h4>
+        <p>Only unpaid drafts can be deleted. If it is confirmed, it has posted stock and a receivable — archive it instead. The error message names the exact reason.</p>
+        <h4>"Material ID already exists"</h4>
+        <p>Raw material codes must be unique. Reuse the existing material rather than creating a second one.</p>
+        <h4>A weight will not change</h4>
+        <p>That pack size already has stock history, so its weight is locked to protect historical stock. Change the rate instead, or add a new pack size.</p>
+        <h4>A button is missing</h4>
+        <p>Your role lacks the permission. See <strong>Roles and permissions</strong>; an Admin can grant it on the Users page.</p>
+        <h4>A figure looks wrong</h4>
+        <p>Open <strong>Stock Analysis</strong> first — it reconciles stock against the movement ledger and names the drift. Challan, invoice and party balances are always derivable as total minus paid; the audit history shows who changed what.</p>
+        <h4>Numbers in the list look stale</h4>
+        <p>Press <strong>⟳ Refresh</strong> in the top bar. It reloads the current page's data and keeps your filters.</p>
+      </div>
+    </details>
+
+  </div>
+</div>
+
+<style>
+  .help-topic {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    margin-bottom: 10px;
+    background: var(--color-surface);
+  }
+  .help-topic > summary {
+    cursor: pointer;
+    padding: 12px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .help-topic > summary::-webkit-details-marker { display: none; }
+  .help-topic > summary::before {
+    content: "▸";
+    color: var(--color-primary);
+    font-size: 13px;
+    transition: transform 0.15s;
+  }
+  .help-topic[open] > summary::before { transform: rotate(90deg); }
+  .help-topic > summary:hover { background: var(--color-surface-alt); }
+  .help-body {
+    padding: 4px 16px 14px 34px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--color-text);
+  }
+  .help-body h4 {
+    font-size: 13px;
+    font-weight: 700;
+    margin: 12px 0 4px;
+    color: var(--color-text);
+  }
+  .help-body ul, .help-body ol { margin: 4px 0 8px 18px; }
+  .help-body li { margin-bottom: 4px; }
+  .help-body p { margin-bottom: 8px; }
+  .help-body code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--color-surface-alt);
+    padding: 1px 4px;
+    border-radius: 4px;
+  }
+  .help-body em { color: var(--color-text-muted); }
+  #help-results:not(:empty) {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--color-accent-soft);
+    font-size: 12px;
+    color: var(--color-text);
+  }
+</style>
+
+<script>
+(function () {
+  function topics() {
+    return Array.prototype.slice.call(document.querySelectorAll("#help-body .help-topic"));
+  }
+
+  function label(el) {
+    var s = el.querySelector("summary");
+    return s ? s.textContent : "";
+  }
+
+  // Search the section heading and its body text. Matching sections stay
+  // visible and open; the rest are hidden so the page stays short. The
+  // matched word itself is wrapped in <mark> so you see WHERE it hit.
+  function clearMarks(root) {
+    root.querySelectorAll("mark[data-hl]").forEach(function (m) {
+      const p = m.parentNode;
+      while (m.firstChild) p.insertBefore(m.firstChild, m);
+      p.removeChild(m);
+      p.normalize();
+    });
+  }
+  function highlightTerm(root, term) {
+    const rx = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(function (n) {
+      rx.lastIndex = 0;
+      if (!n.nodeValue || !rx.test(n.nodeValue)) return;
+      rx.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let last = 0, m;
+      while ((m = rx.exec(n.nodeValue))) {
+        frag.appendChild(document.createTextNode(n.nodeValue.slice(last, m.index)));
+        const mark = document.createElement("mark");
+        mark.setAttribute("data-hl", "1");
+        mark.textContent = m[0];
+        frag.appendChild(mark);
+        last = m.index + m[0].length;
+      }
+      frag.appendChild(document.createTextNode(n.nodeValue.slice(last)));
+      n.parentNode.replaceChild(frag, n);
+    });
+  }
+  window.filterHelp = function (term) {
+    var q = (term || "").trim().toLowerCase();
+    var shown = 0;
+    topics().forEach(function (el) {
+      var text = (label(el) + " " + (el.querySelector(".help-body") || {}).textContent).toLowerCase();
+      var hit = !q || text.indexOf(q) !== -1;
+      el.style.display = hit ? "" : "none";
+      clearMarks(el);
+      if (hit) {
+        shown++;
+        if (q) {
+          el.open = true;
+          highlightTerm(el, (term || "").trim());
+        }
+      }
+    });
+    var box = document.getElementById("help-results");
+    var count = document.getElementById("help-count");
+    if (q) {
+      box.textContent = shown
+        ? "Showing " + shown + " section" + (shown === 1 ? "" : "s") + " matching “" + term.trim() + "”."
+        : "No section matches “" + term.trim() + "”. Try a shorter word, such as restore, rate, stock or archive.";
+    } else {
+      box.textContent = "";
+    }
+    if (count) count.textContent = shown + " of " + topics().length + " sections";
+  };
+
+  window.clearHelpSearch = function () {
+    var input = document.getElementById("help-search");
+    if (input) input.value = "";
+    window.filterHelp("");
+  };
+
+  window.expandAllHelp = function (open) {
+    topics().forEach(function (el) {
+      if (el.style.display === "none") return;   // never reveal a hidden match
+      el.open = !!open;
+    });
+  };
+
+  var input = document.getElementById("help-search");
+  if (input) {
+    input.addEventListener("input", function () { window.filterHelp(input.value); });
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        input.value = "";
+        window.filterHelp("");
+      }
+    });
+  }
+  // Searchable dropdown listing every help section title (click empty box).
+  if (input && window.UI && window.UI.searchSuggest) {
+    window.UI.searchSuggest(input, function () {
+      return topics().map(function (el) {
+        const s = el.querySelector("summary");
+        return s ? String(s.textContent || "").trim() : "";
+      }).filter(Boolean);
+    });
+  }
+  window.filterHelp("");
+
+  // HSN reference tables, rendered from the same master the dropdowns use
+  // so the three can never drift apart. Fetched once, on first open.
+  var hsnDone = false;
+  function hsnEsc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function hsnTable(el, codes) {
+    el.innerHTML = "<table><tbody>" + (codes || []).map(function (c) {
+      return "<tr><td style=\"padding:4px 8px; border:1px solid var(--color-border); font-family:monospace;\">" +
+        hsnEsc(c.code) + "</td><td style=\"padding:4px 8px; border:1px solid var(--color-border);\">" +
+        hsnEsc(c.name) + "</td></tr>";
+    }).join("") + "</tbody></table>";
+  }
+  var hsnRef = document.getElementById("hsn-ref");
+  if (hsnRef) {
+    hsnRef.addEventListener("toggle", function () {
+      if (!hsnRef.open || hsnDone) return;
+      hsnDone = true;
+      var fetchFn = (window.UI && window.UI.api)
+        ? function () { return window.UI.api("/hsn-codes"); }
+        : function () { return fetch("/hsn-codes").then(function (r) { return r.json(); }); };
+      fetchFn().then(function (d) {
+        hsnTable(document.getElementById("hsn-ref-products"), (d || {}).products);
+        hsnTable(document.getElementById("hsn-ref-raw"), (d || {}).raw_materials);
+      }).catch(function () {
+        hsnDone = false;
+        document.getElementById("hsn-ref-products").textContent = "Could not load.";
+        document.getElementById("hsn-ref-raw").textContent = "Could not load.";
+      });
+    });
+  }
+})();
+</script>

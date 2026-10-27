@@ -1,0 +1,241 @@
+<!-- Raw Material Summary: the factory's tracking sheet. Opening plus
+     confirmed purchases in range, what production consumed in range, the
+     balance left, and batch stage loss split pro-rata over what each
+     batch consumed. -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+    <h2 style="font-size: 18px; font-weight: 600; margin:0;">Raw Material Summary</h2>
+    <button class="btn btn-export btn-sm" onclick="window.print()">Print / PDF</button>
+  </div>
+  <p style="font-size:12px; color:var(--color-text-muted); margin:0 0 12px;">
+    Stock is opening plus confirmed purchases and manual adjustments in
+    range. Balance is stock minus production — a negative balance is shown
+    honestly in red, never clamped. Wastage is each batch's stage loss shared across the materials
+    that batch consumed, as a share of production.
+  </p>
+  <div class="form-row no-print" style="max-width:760px;">
+    <div class="form-group"><label>From</label><input id="rep-rm-from" type="date" /></div>
+    <div class="form-group"><label>To</label><input id="rep-rm-to" type="date" /></div>
+    <div class="form-group" style="flex:2;"><label>Find material</label><select id="rmsum-search" onchange="renderRmsum()"><option value="">All materials</option></select></div>
+  </div>
+  <div class="form-row no-print" style="max-width:760px;">
+    <div class="form-group" id="rmsum-actions" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <button class="btn btn-primary btn-sm" onclick="loadRawMaterialSummary()">Apply</button>
+      <button class="btn btn-secondary btn-sm" onclick="rmsumPreset('month')">This Month</button>
+      <button class="btn btn-secondary btn-sm" onclick="rmsumPreset('fy')">This FY</button>
+      <button class="btn btn-secondary btn-sm" id="rmsum-show-selected" onclick="rmsumShowSelected()">Show selected only</button>
+      <button class="btn btn-secondary btn-sm" id="rmsum-reset" onclick="rmsumReset()" title="Reset dates, search and hidden rows">Reset</button>
+    </div>
+  </div>
+</div>
+
+<style>
+/* The Show checkbox column is a screen control, not report content. */
+@media print {
+  #rep-rmsum th:first-child, #rep-rmsum td:first-child { display: none; }
+}
+/* Small outline boxes: nonzero figures boxed slate, negatives red. */
+#rep-rmsum .rm-box { display: inline-block; border: 1.5px solid #64748b; border-radius: 6px; padding: 0 8px; font-weight: 600; }
+#rep-rmsum .rm-box.rm-neg { border-color: #f43f5e; color: var(--color-danger); background: #fff; }
+[data-theme="dark"] #rep-rmsum .rm-box { border-color: #94a3b8; }
+[data-theme="dark"] #rep-rmsum .rm-box.rm-neg { border-color: #fb7185; color: #fb7185; background: #2a0f16; }
+</style>
+
+<div class="stats-row" id="rmsum-cards" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+  <div class="stat-card stat-blue"><h4>Stock</h4><div class="stat-value" id="rmsum-stock">—</div></div>
+  <div class="stat-card"><h4>Production Use</h4><div class="stat-value" id="rmsum-prod">—</div></div>
+  <div class="stat-card"><h4>Balance</h4><div class="stat-value" id="rmsum-bal">—</div></div>
+  <div class="stat-card stat-amber"><h4>Wastage</h4><div class="stat-value" id="rmsum-waste">—</div></div>
+</div>
+
+<div class="card">
+  <div id="rep-rmsum"></div>
+  <p id="rep-rmsum-msg" style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"></p>
+</div>
+
+<script>
+(function(){
+  function escRm(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function rmsumLocalISO(d) {
+    const p = n => String(n).padStart(2, "0");
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+
+  window.rmsumPreset = function (which) {
+    const now = new Date();
+    let from;
+    if (which === "month") {
+      from = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else {
+      // Financial year: April to March.
+      from = new Date(now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1, 3, 1);
+    }
+    document.getElementById("rep-rm-from").value = rmsumLocalISO(from);
+    document.getElementById("rep-rm-to").value = rmsumLocalISO(now);
+    loadRawMaterialSummary();
+  };
+
+  /* Per-browser hidden rows. Keyed by material name (unique per master);
+     choice survives reloads and applies to every range until Reset. */
+  const HIDE_KEY = "rmsum_hidden";
+  function loadHidden() {
+    try { return new Set(JSON.parse(localStorage.getItem(HIDE_KEY) || "[]")); }
+    catch (e) { return new Set(); }
+  }
+  function saveHidden(set) {
+    try { localStorage.setItem(HIDE_KEY, JSON.stringify([...set])); } catch (e) {}
+  }
+
+  // Last fetched payload. Search/hide/show re-render from this without
+  // refetching; only Apply and the presets hit the server.
+  let lastRmsum = null;
+
+  // "Find material" is a searchable dropdown: every loaded material becomes
+  // an option, the empty box drops the full list on click, typing filters
+  // it (UI.quickSelect). Rebuilt after every fetch so it tracks the table.
+  function fillRmsumSearch() {
+    const sel = document.getElementById("rmsum-search");
+    if (!sel || !lastRmsum) return;
+    const prev = sel.value || "";
+    const names = [...new Set((lastRmsum.rows || []).map(r => r.name || "").filter(Boolean))].sort();
+    sel.innerHTML = `<option value="">All materials (${names.length})</option>` +
+      names.map(n => `<option value="${escRm(n).toLowerCase()}">${escRm(n)}</option>`).join("");
+    if (prev) {
+      const still = names.some(n => n.toLowerCase() === prev);
+      if (still) sel.value = prev;
+    }
+    if (window.UI && window.UI.quickSelect) {
+      window.UI.quickSelect(sel, "Type to find material…");
+    }
+  }
+
+  // Hide everything currently unchecked, keep everything checked.
+  window.rmsumShowSelected = function () {
+    const hidden = loadHidden();
+    document.querySelectorAll('#rep-rmsum input[data-rmsum]').forEach(cb => {
+      if (cb.checked) hidden.delete(cb.dataset.rmsum);
+      else hidden.add(cb.dataset.rmsum);
+    });
+    saveHidden(hidden);
+    renderRmsum();
+  };
+
+  window.rmsumReset = function () {
+    saveHidden(new Set());
+    const s = document.getElementById("rmsum-search");
+    if (s) s.value = "";
+    // Reset blanks the dates (the server falls back to the FY range) and
+    // reloads, not just list filters.
+    document.getElementById("rep-rm-from").value = "";
+    document.getElementById("rep-rm-to").value = "";
+    loadRawMaterialSummary();
+  };
+
+  /* Render from the cache. Totals follow the visible rows only: a hidden
+     material contributes to neither the cards nor the Total row, and the
+     message says how many of how many are on screen. */
+  window.renderRmsum = function () {
+    const el = document.getElementById("rep-rmsum");
+    const msg = document.getElementById("rep-rmsum-msg");
+    if (!el || !lastRmsum) return;
+    const hidden = loadHidden();
+    // Dropdown pick filters by exact material ("All materials" = no filter).
+    const q = ((document.getElementById("rmsum-search") || {}).value || "").trim().toLowerCase();
+    const kg = n => (parseFloat(n) || 0).toFixed(2) + " Kg";
+    // Small outline boxes: nonzero figures boxed slate, negatives red.
+    const rmBox = n => {
+      const v = parseFloat(n) || 0;
+      if (v === 0) return kg(n);
+      return v < 0
+        ? `<span class="rm-box rm-neg">${kg(n)}</span>`
+        : `<span class="rm-box">${kg(n)}</span>`;
+    };
+    const visibleRows = (lastRmsum.rows || []).filter(r =>
+      !hidden.has(r.name || "") && (!q || (r.name || "").toLowerCase() === q));
+    const sum = k => visibleRows.reduce((s, r) => s + (parseFloat(r[k]) || 0), 0);
+    document.getElementById("rmsum-stock").textContent = kg(sum("stock_kg"));
+    document.getElementById("rmsum-prod").textContent = kg(sum("production_kg"));
+    document.getElementById("rmsum-bal").textContent = kg(sum("balance_kg"));
+    document.getElementById("rmsum-waste").textContent = kg(sum("wastage_kg"));
+    const rows = visibleRows.map(r => {
+      return {
+        show: `<input type="checkbox" data-rmsum="${escRm(r.name)}"${hidden.has(r.name || "") ? "" : " checked"} title="Show/hide this material" />`,
+        name: escRm(r.name || "—"),
+        stock: rmBox(r.stock_kg),
+        production: rmBox(r.production_kg),
+        balance: rmBox(r.balance_kg),
+        wastage: rmBox(r.wastage_kg),
+        wastage_pct: (parseFloat(r.wastage_pct) || 0).toFixed(2) + "%",
+      };
+    });
+    if (!rows.length) {
+      el.innerHTML = "<p>No materials match. Adjust the search or press Reset.</p>";
+      if (msg) msg.textContent = "";
+      return;
+    }
+    rows.push({
+      show: "",
+      name: "<strong>Total</strong>",
+      stock: "<strong>" + kg(sum("stock_kg")) + "</strong>",
+      production: "<strong>" + kg(sum("production_kg")) + "</strong>",
+      balance: "<strong>" + kg(sum("balance_kg")) + "</strong>",
+      wastage: "<strong>" + kg(sum("wastage_kg")) + "</strong>",
+      wastage_pct: "",
+    });
+    if (window.UI.renderTable) {
+      window.UI.renderTable(el, rows, [
+        {key:"show",label:"Show"},
+        {key:"name",label:"Raw Materials"},
+        {key:"stock",label:"Stock in Kg"},
+        {key:"production",label:"Production in Kg"},
+        {key:"balance",label:"Stock Balance in Kg"},
+        {key:"wastage",label:"Wastage in kg"},
+        {key:"wastage_pct",label:"Wastage in %"},
+      ]);
+    }
+    // A toggled checkbox takes effect at once and persists.
+    el.querySelectorAll("input[data-rmsum]").forEach(cb => {
+      cb.addEventListener("change", () => {
+        const h = loadHidden();
+        if (cb.checked) h.delete(cb.dataset.rmsum);
+        else h.add(cb.dataset.rmsum);
+        saveHidden(h);
+        renderRmsum();
+      });
+    });
+    if (msg) {
+      const total = (lastRmsum.rows || []).length;
+      msg.textContent = "Showing " + visibleRows.length + " of " + total +
+        " material" + (total === 1 ? "" : "s") +
+        " · " + (lastRmsum.from || "").slice(0, 10) + " to " + (lastRmsum.to || "").slice(0, 10);
+    }
+  };
+
+  /* The screenshot table. Scoped to the chosen range (month / FY presets
+     above); the server defaults to the current financial year when a
+     bound is blank. */
+  async function loadRawMaterialSummary() {
+    const el = document.getElementById("rep-rmsum");
+    if (!el) return;
+    try {
+      const params = new URLSearchParams({
+        from_date: document.getElementById("rep-rm-from").value || "",
+        to_date: document.getElementById("rep-rm-to").value || "",
+      });
+      const d = await window.UI.api("/reports/raw-material-summary?" + params.toString());
+      lastRmsum = d;
+      fillRmsumSearch();
+      renderRmsum();
+    } catch (e) {
+      console.error("Raw material summary", e);
+      el.innerHTML = "<p>Could not load the raw material summary.</p>";
+    }
+  }
+  window.loadRawMaterialSummary = loadRawMaterialSummary;
+
+  rmsumPreset("fy");
+})();
+</script>

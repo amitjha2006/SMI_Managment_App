@@ -1,0 +1,903 @@
+<!-- Product Stock & Sales Analysis -->
+<div class="card an-compact">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:5px;">
+    <h2 style="font-size: 15px; font-weight: 600; margin:0;">Product Stock &amp; Sales Analysis</h2>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="btn btn-export btn-sm" onclick="exportAnalysis()">Export Excel</button>
+      <button class="btn btn-export btn-sm" onclick="window.print()">Print / PDF</button>
+    </div>
+  </div>
+  <div class="form-row" style="align-items:flex-end;">
+    <div class="form-group"><label>Search Product</label>
+      <input id="an-search" type="search" placeholder="Type product name or size…" oninput="renderAnalysis()" autocomplete="off" />
+    </div>
+    <div class="form-group"><label>Category</label><select id="an-cat" onchange="renderAnalysis()"><option value="">All categories</option></select></div>
+    <div class="form-group"><label>Pack Size</label><select id="an-size" onchange="onAnSizeDropdown()"><option value="">All sizes</option></select><button type="button" id="an-sizes-toggle" onclick="toggleSizesPanel()">☑ Sizes: All ▾</button><div id="an-sizes" class="collapsed"></div></div>
+    <div class="form-group"><label>From</label><input id="an-from" type="date" onchange="loadAnalysis()" /></div>
+    <div class="form-group"><label>To</label><input id="an-to" type="date" onchange="loadAnalysis()" /></div>
+    <div class="form-group"><button class="btn btn-secondary btn-sm" type="button" onclick="clearAllFilters()" style="height:100%;">Clear All</button></div>
+    <div class="form-group"><label>Style</label><select id="an-style" onchange="setAnStyle(this.value)"><option value="classic">Classic</option><option value="ledger">Bold ledger</option><option value="groups">Group columns</option><option value="sparks">Ready bars</option><option value="heat">Heatmap BAL</option><option value="ink">Data ink</option></select></div>
+  </div>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-top:8px;">BAL = Stock − Sale (packets). Total Ready KG = Σ(BAL × pack weight) + Loose KG. Negative BAL stays visible as a reconciliation warning.</p>
+</div>
+
+<div class="stats-row an-stats" id="an-cards" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+  <div class="stat-card stat-blue"><h4>Total Ready</h4><div class="stat-value" id="an-total-ready">—</div></div>
+  <div class="stat-card"><h4>Products</h4><div class="stat-value" id="an-products">—</div></div>
+  <div class="stat-card stat-red"><h4>Negative BAL Rows</h4><div class="stat-value" id="an-neg">—</div></div>
+  <div class="stat-card stat-amber"><h4>Reconciliation Warnings</h4><div class="stat-value" id="an-warn">—</div></div>
+</div>
+
+<div class="card">
+  <p id="an-count" style="font-size:12px; color:var(--color-text-muted); margin:0 0 8px;"></p>
+  <div class="table-wrap analysis-head-wrap">
+    <table class="analysis-table" id="an-head-table"><thead id="an-head"></thead></table>
+  </div>
+  <div class="table-wrap analysis-wrap">
+    <table class="analysis-table" id="an-body-table"><tbody id="an-body"></tbody><tfoot id="an-foot"></tfoot></table>
+  </div>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-top:8px;">Totals cover all sizes even when columns are hidden. Click a BAL value to drill down.<span class="an-legend"><i class="lg-stock"></i>Stock<i class="lg-sale"></i>Sale<i class="lg-bal"></i>BAL</span></p>
+</div>
+
+<div id="an-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Details" style="max-width:760px;">
+    <div class="modal-head" data-drag-handle title="Drag to move">
+      <h3 id="an-modal-title">Details</h3>
+      <button class="modal-close" type="button" aria-label="Close" onclick="closeAnModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="an-modal-body" style="font-size:13px;"></div>
+      <div style="display:flex; justify-content:flex-end; margin-top:14px;">
+        <button class="btn btn-danger-outline" onclick="closeAnModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Body scroll box: capped so footers and the total row stay reachable
+   without flipping pages; the header box above it never scrolls. */
+.analysis-wrap { max-height: 65vh; overflow: auto; }
+.analysis-table { border-collapse: separate; border-spacing: 0; font-size: 13px; min-width: 1200px; width: 100%; }
+/* Header is two bands, not one. The weight-group row is tinted per pack size;
+   the Stock/Sale/BAL row is a single neutral band whose meaning rides on a
+   coloured underline. The old scheme put a teal gradient AND three saturated
+   pills in the same bar — four competing hues, which is what read as "not
+   nice". The two rule colours are deliberately different: ink for the
+   weight-group boundary (structure) and teal between Stock/Sale/BAL (trio). */
+.analysis-table thead th {
+  font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
+  background: #0f172a; color: #ffffff;
+  padding: 10px 12px; border-bottom: 0; white-space: nowrap;
+}
+#an-head-table, #an-body-table {
+  --an-rule-inner: #0d9488;   /* Stock | Sale | BAL */
+  --an-rule-group: #0f172a;   /* pack-size (weight) boundary */
+}
+#an-head-table { --an-u-stock: #0369a1; --an-u-sale: #b45309; --an-u-bal: #047857; }
+[data-theme="dark"] #an-head-table, [data-theme="dark"] #an-body-table {
+  --an-rule-inner: #2dd4bf; --an-rule-group: #e2e8f0;
+}
+[data-theme="dark"] #an-head-table { --an-u-stock: #38bdf8; --an-u-sale: #fbbf24; --an-u-bal: #34d399; }
+/* One hue per pack size, applied by renderHead() as w0…w9 (index % 10, so the
+   palette cannot run out however many sizes exist). Every entry is a light
+   tint with its own dark ink, so all ten clear WCAG AA at 13px and none of
+   them compete with the figures underneath. */
+#an-head-table .w0 { --w-head: #fde68a; --w-head-ink: #78350f; }
+#an-head-table .w1 { --w-head: #bbf7d0; --w-head-ink: #14532d; }
+#an-head-table .w2 { --w-head: #bfdbfe; --w-head-ink: #1e3a8a; }
+#an-head-table .w3 { --w-head: #fecdd3; --w-head-ink: #881337; }
+#an-head-table .w4 { --w-head: #ddd6fe; --w-head-ink: #4c1d95; }
+#an-head-table .w5 { --w-head: #fed7aa; --w-head-ink: #7c2d12; }
+#an-head-table .w6 { --w-head: #a5f3fc; --w-head-ink: #155e75; }
+#an-head-table .w7 { --w-head: #fbcfe8; --w-head-ink: #831843; }
+#an-head-table .w8 { --w-head: #d9f99d; --w-head-ink: #365314; }
+#an-head-table .w9 { --w-head: #e9d5ff; --w-head-ink: #581c87; }
+[data-theme="dark"] #an-head-table .w0 { --w-head: #3d2c0a; --w-head-ink: #fde68a; }
+[data-theme="dark"] #an-head-table .w1 { --w-head: #0b3b22; --w-head-ink: #bbf7d0; }
+[data-theme="dark"] #an-head-table .w2 { --w-head: #12264f; --w-head-ink: #bfdbfe; }
+[data-theme="dark"] #an-head-table .w3 { --w-head: #4a1220; --w-head-ink: #fecdd3; }
+[data-theme="dark"] #an-head-table .w4 { --w-head: #2b1d5e; --w-head-ink: #ddd6fe; }
+[data-theme="dark"] #an-head-table .w5 { --w-head: #43220b; --w-head-ink: #fed7aa; }
+[data-theme="dark"] #an-head-table .w6 { --w-head: #083344; --w-head-ink: #a5f3fc; }
+[data-theme="dark"] #an-head-table .w7 { --w-head: #4a1229; --w-head-ink: #fbcfe8; }
+[data-theme="dark"] #an-head-table .w8 { --w-head: #1a2e05; --w-head-ink: #d9f99d; }
+[data-theme="dark"] #an-head-table .w9 { --w-head: #2e1065; --w-head-ink: #e9d5ff; }
+#an-head-table thead th.grouphead { background: var(--w-head, #0f172a); color: var(--w-head-ink, #fff); }
+/* Neutral trio band: the 3px underline is what says Stock / Sale / BAL. */
+#an-head-table thead th.pill-stock,
+#an-head-table thead th.pill-sale,
+#an-head-table thead th.pill-bal { background: #f8fafc; color: #475569; }
+#an-head-table thead th.pill-stock { border-bottom: 3px solid var(--an-u-stock); }
+#an-head-table thead th.pill-sale { border-bottom: 3px solid var(--an-u-sale); }
+#an-head-table thead th.pill-bal { border-bottom: 3px solid var(--an-u-bal); }
+[data-theme="dark"] #an-head-table thead th.pill-stock,
+[data-theme="dark"] #an-head-table thead th.pill-sale,
+[data-theme="dark"] #an-head-table thead th.pill-bal { background: #1a2439; color: #9db0c9; }
+/* Rules. Declared on BOTH tables (the header is its own table above the body
+   scroll box) and on the tfoot row, or the line breaks at the header seam. */
+#an-head-table thead th.pill-stock, #an-head-table thead th.pill-sale,
+#an-body-table td.col-stock, #an-body-table td.col-sale {
+  border-right: 1px solid var(--an-rule-inner);
+}
+#an-head-table thead th.grouphead, #an-head-table tr:nth-child(2) th.pill-stock,
+#an-body-table td.col-stock { border-left: 2px solid var(--an-rule-group); }
+/* The frozen Product column owns the first boundary: a border on the sticky
+   cell travels with it, so the edge still shows after scrolling sideways. The
+   first group's own left rule is therefore suppressed to avoid a double line. */
+#an-head-table th.col-product, #an-body-table td.col-product {
+  box-shadow: none; border-right: 2px solid var(--an-rule-group);
+}
+#an-head-table th.col-product + th.grouphead,
+#an-head-table tr:nth-child(2) th.pill-stock:first-child,
+#an-body-table td.col-product + td.col-stock { border-left: 0; }
+/* Split-table header (see markup): the thead lives in its own
+   non-scrolling box above the body scroll box; syncAnWidths mirrors
+   widths and horizontal scroll. No sticky rows anywhere, so no seam can
+   open at any zoom, in any browser. */
+.analysis-head-wrap { overflow: hidden; }
+.analysis-head-wrap th, #an-body-table td { box-sizing: border-box; }
+/* Group labels sit centered over their Stock/Sale/BAL trio; left-aligned
+   they leave a dead area that reads as a phantom empty column. */
+#an-head-table thead tr:first-child th[colspan] { text-align: center; }
+.analysis-table td { padding: 8px 12px; border-bottom: 1px solid var(--color-border); white-space: nowrap; }
+.analysis-table tbody tr:hover td { background: #f5f8fc; }
+.analysis-table .col-product {
+  position: sticky; left: 0; z-index: 2; background: #fff; font-weight: 600;
+  min-width: 180px; box-shadow: 1px 0 0 var(--color-border);
+}
+.analysis-table thead .col-product { z-index: 5; background: #0f172a; color: #ffffff; }
+/* Corner header must outrank the bold product names below it. */
+#an-head-table thead th.col-product { font-size: 14px; font-weight: 800; color: #ffffff; }
+.analysis-table tfoot td { font-weight: 700; background: #f5f8fc; position: sticky; bottom: 0; }
+.analysis-table tfoot .col-product { z-index: 4; }
+.analysis-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.analysis-table .neg { color: var(--color-danger); font-weight: 700; background: #ffe4e6; }
+.analysis-table .bal-cell { cursor: pointer; text-decoration: underline dotted; }
+/* Column meaning reads from the group sub-header pills (Stock / Sale / BAL),
+   not from full-column tints: body cells stay white so figures scan cleanly.
+   Only the key figure (BAL) keeps a mint tint, negatives stay danger-red — and
+   because the new separators are borders, none of those repaints can wipe a
+   line the way a background-based divider would. */
+.analysis-table td.col-bal { background: var(--color-success-soft); }
+.analysis-table tbody tr:hover td.col-bal { background: #a7f3d0; }
+.analysis-table td.neg, .analysis-table tbody tr:hover td.neg { color: var(--color-danger); font-weight: 700; background: #ffe4e6; }
+/* Header colours are decorative but meaningful, so Print / PDF must keep them
+   (browsers strip backgrounds by default). */
+.analysis-table thead th.pill-stock, .analysis-table thead th.pill-sale,
+.analysis-table thead th.pill-bal, .analysis-table thead th.grouphead,
+.analysis-table thead th.col-product {
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+/* Summary cards: one semantic accent each (top bar + value). */
+.stat-card.stat-blue::before { background: var(--color-info); }
+.stat-card.stat-blue .stat-value { color: var(--color-info); }
+.stat-card.stat-red::before { background: var(--color-danger); }
+.stat-card.stat-red .stat-value { color: var(--color-danger); }
+.stat-card.stat-amber::before { background: var(--color-accent); }
+.stat-card.stat-amber .stat-value { color: var(--color-warning); }
+.an-legend { white-space: nowrap; margin-left: 12px; }
+.an-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin: 0 4px 0 10px; }
+.an-legend .lg-stock { background: var(--color-info); }
+.an-legend .lg-sale { background: var(--color-accent); }
+.an-legend .lg-bal { background: var(--color-success); }
+/* Compact top boxes: the filter card and summary cards shrink so the
+   table gets the viewport. Table card and modal untouched. */
+.an-compact { padding: 8px 12px; margin-bottom: 10px; }
+.an-compact h2 { font-size: 15px !important; }
+.an-compact h3, .an-compact h2 { margin: 0; }
+.an-compact > p { margin: 3px 0 0; font-size: 10px; }
+.an-compact .form-group { margin-bottom: 5px; }
+.an-compact .form-group label { font-size: 11px; margin-bottom: 2px; }
+.an-compact .form-group input, .an-compact .form-group select, .an-compact .form-group button { font-size: 12px; padding: 5px 8px; }
+.an-stats { gap: 8px; margin-bottom: 10px; }
+.an-stats .stat-card { padding: 7px 12px; }
+.an-stats .stat-card h4 { margin-bottom: 2px; font-size: 10px; }
+.an-stats .stat-card .stat-value { font-size: 16px; }
+/* Pack-size multi-select: small checkbox box under the dropdown so several
+   sizes can be picked in one go (the dropdown alone allows one or all). */
+#an-sizes { display: flex; flex-direction: column; gap: 2px; max-height: 132px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 8px; padding: 6px 8px; margin-top: 6px; background: var(--color-surface); font-size: 13px; min-width: 180px; }
+#an-sizes label { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 6px; cursor: pointer; }
+#an-sizes label:hover { background: var(--color-surface-alt); }
+#an-sizes input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--color-primary); flex-shrink: 0; }
+#an-sizes .an-sizes-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 6px; font-size: 12px; color: var(--color-text-muted); }
+#an-sizes .an-sizes-reset { background: none; border: none; color: var(--color-primary); font-size: 12px; font-weight: 700; cursor: pointer; padding: 2px 4px; }
+#an-sizes .an-sizes-reset:hover { text-decoration: underline; }
+#an-sizes.collapsed { display: none; }
+#an-sizes-toggle { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin-top: 6px; padding: 9px 12px; border: 1px solid var(--color-border-strong); border-radius: 8px; background: var(--color-surface); color: var(--color-text); font-size: 14px; font-family: var(--font-base); cursor: pointer; }
+#an-sizes-toggle:hover { border-color: var(--color-primary); }
+/* Bold-ledger experiment skin (opt-in via the Style switcher; Classic is
+   default). Scoped to this table's ids so monthly-sales never sees it. */
+body[data-anstyle="ledger"] #an-head-table thead th {
+  background: #c55a11; color: #fff; font-size: 13px; font-weight: 700;
+}
+body[data-anstyle="ledger"] #an-body-table tbody tr:nth-child(even) td:not(.neg):not(.col-bal) { background: #f2ece1; }
+body[data-anstyle="ledger"] #an-body-table td { border-bottom: 1px solid #cfc4ae; }
+body[data-anstyle="ledger"] #an-body-table tbody tr:hover td:not(.neg):not(.col-bal) { background: #e9e2d2; }
+[data-theme="dark"] body[data-anstyle="ledger"] #an-head-table thead th { background: #7c3a12; color: #fff; }
+[data-theme="dark"] body[data-anstyle="ledger"] #an-body-table tbody tr:nth-child(even) td:not(.neg):not(.col-bal) { background: #241c10; }
+[data-theme="dark"] body[data-anstyle="ledger"] #an-body-table td { border-bottom: 1px solid #4a3a22; }
+[data-theme="dark"] body[data-anstyle="ledger"] #an-body-table tbody tr:hover td:not(.neg):not(.col-bal) { background: #2e2413; }
+@media print {
+  body[data-anstyle="ledger"] #an-body-table tbody tr:nth-child(even) td:not(.neg):not(.col-bal) {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+}
+/* Group-columns experiment skin (opt-in; Classic default). Alternating
+   faint washes per pack-size group so the eye tracks wide columns.
+   Negatives and BAL keep their own colors; pills untouched. The header
+   cells kept the base white text but repainted their background to a
+   light wash — white on near-white is why the headers vanished in light
+   mode, so each wash ships with its own readable ink color. */
+body[data-anstyle="groups"] #an-head-table thead th.grp-a { background: #e3ebf5; color: #102a43; }
+body[data-anstyle="groups"] #an-head-table thead th.grp-b { background: #f3ecdc; color: #5c4a1e; }
+body[data-anstyle="groups"] #an-body-table td.grp-a:not(.neg):not(.col-bal) { background: #eef2f8; }
+body[data-anstyle="groups"] #an-body-table td.grp-b:not(.neg):not(.col-bal) { background: #faf6ec; }
+[data-theme="dark"] body[data-anstyle="groups"] #an-head-table thead th.grp-a { background: #22304d; color: #e7eef8; }
+[data-theme="dark"] body[data-anstyle="groups"] #an-head-table thead th.grp-b { background: #2e2413; color: #e7eef8; }
+[data-theme="dark"] body[data-anstyle="groups"] #an-body-table td.grp-a:not(.neg):not(.col-bal) { background: #182032; }
+[data-theme="dark"] body[data-anstyle="groups"] #an-body-table td.grp-b:not(.neg):not(.col-bal) { background: #221b0e; }
+@media print {
+  body[data-anstyle="groups"] #an-body-table td.grp-a:not(.neg):not(.col-bal),
+  body[data-anstyle="groups"] #an-body-table td.grp-b:not(.neg):not(.col-bal) {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+}
+/* Sparkbars experiment skin (opt-in; Classic default). Total Ready gets
+   the purchase-summary bar language: share of the visible max. Negative
+   readiness shows no bar, red number only. */
+body[data-anstyle="sparks"] #an-body-table .spark-cell { position: relative; display: block; }
+body[data-anstyle="sparks"] #an-body-table .spark-fill { position: absolute; top: 0; bottom: 0; left: 0; background: #14b8a6; opacity: 0.45; }
+body[data-anstyle="sparks"] #an-body-table .spark-val { position: relative; z-index: 1; }
+[data-theme="dark"] body[data-anstyle="sparks"] #an-body-table .spark-fill { background: #0f766e; opacity: 0.85; }
+@media print {
+  body[data-anstyle="sparks"] #an-body-table .spark-fill {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+}
+@media print {
+  body[data-anstyle="heat"] #an-body-table td.heat-cell {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+}
+/* Data-ink experiment skin (opt-in; Classic default). Pills become plain
+   colored labels; nonzero figures go bold in ink color, zeros stay muted;
+   negatives get a red outline box. */
+body[data-anstyle="ink"] #an-head-table th.pill-stock { background: transparent; color: #0369a1; }
+body[data-anstyle="ink"] #an-head-table th.pill-sale { background: transparent; color: #b45309; }
+body[data-anstyle="ink"] #an-head-table th.pill-bal { background: transparent; color: #047857; }
+body[data-anstyle="ink"] #an-body-table tbody td.num { color: var(--color-text-muted); font-weight: 400; }
+body[data-anstyle="ink"] #an-body-table tbody td.ink-nz { font-weight: 700; color: var(--color-text); }
+body[data-anstyle="ink"] #an-body-table tbody td.ink-nz.col-bal { color: #047857; background: #d1fae5; border-radius: 6px; }
+body[data-anstyle="ink"] #an-body-table tbody td.ink-neg, body[data-anstyle="ink"] #an-body-table tbody td.ink-neg.col-bal { color: #be123c; font-weight: 700; }
+/* Value boxes in every style: nonzero figures sit in column-colored
+   outlines, negatives in red. Zeros stay plain. */
+#an-body-table .ink-box { display: inline-block; border: 1.5px solid #f43f5e; border-radius: 6px; padding: 0 8px; background: #fff; }
+#an-body-table .ink-box.ink-stock { border-color: #0369a1; }
+#an-body-table .ink-box.ink-sale { border-color: #b45309; }
+#an-body-table .ink-box.ink-bal { border-color: #047857; }
+#an-body-table td.ink-nz.col-bal:not(.heat-cell) { color: #047857; font-weight: 700; }
+[data-theme="dark"] #an-body-table .ink-box { background: #1c2536; }
+[data-theme="dark"] #an-body-table .ink-box.ink-stock { border-color: #38bdf8; }
+[data-theme="dark"] #an-body-table .ink-box.ink-sale { border-color: #fbbf24; }
+[data-theme="dark"] #an-body-table .ink-box.ink-bal { border-color: #34d399; }
+[data-theme="dark"] #an-body-table .ink-box:not(.ink-stock):not(.ink-sale):not(.ink-bal) { border-color: #fb7185; }
+[data-theme="dark"] #an-body-table td.ink-nz.col-bal:not(.heat-cell) { color: #34d399; }
+[data-theme="dark"] body[data-anstyle="ink"] #an-head-table th.pill-stock { color: #38bdf8; }
+[data-theme="dark"] body[data-anstyle="ink"] #an-head-table th.pill-sale { color: #fbbf24; }
+[data-theme="dark"] body[data-anstyle="ink"] #an-head-table th.pill-bal { color: #34d399; }
+[data-theme="dark"] body[data-anstyle="ink"] #an-body-table tbody td.ink-neg { color: #fb7185; }
+[data-theme="dark"] body[data-anstyle="ink"] #an-body-table tbody td.ink-nz.col-bal { background: #07382c; color: #34d399; }
+@media print {
+  .sidebar, .top-header, #toast-container, .btn, #an-modal,
+  .card:first-child .form-row, #an-sizes { display: none !important; }
+  .main-wrapper { margin-left: 0; }
+  .main-content { max-width: none; padding: 0; }
+  .analysis-wrap { max-height: none; overflow: visible; border: 0; }
+  .analysis-table { min-width: 0; font-size: 11px; }
+  .card { box-shadow: none; }
+}
+</style>
+
+<script>
+(function(){
+  let analysisData = null;
+  let visibleCols = null;  // set of column keys; null = all
+
+  // Length of the per-weight header palette in <style> (w0…w9). renderHead
+  // wraps the group index at this number, so the tints cycle instead of
+  // running out when the master data grows past ten pack sizes.
+  const AN_PALETTE = 10;
+
+  function allColumns() {
+    return (analysisData && analysisData.columns) || [];
+  }
+
+  // Product suggestion dropdown on the Analysis search: bare product names
+  // only. Size filtering has its own Pack Size dropdown, so product + size
+  // combos here would only duplicate it. Typed text still matches size
+  // labels in filteredRows; only the suggestions stay name-only.
+  // UI.searchSuggest replaces the old native datalist: datalists never
+  // open on an empty click in WebView2, which is exactly the complaint.
+  function populateProductSuggestions() {
+    const input = document.getElementById("an-search");
+    if (!analysisData || !input || !window.UI || !window.UI.searchSuggest) return;
+    window.UI.searchSuggest(input, () => {
+      if (!analysisData) return [];
+      const suggestions = new Set();
+      analysisData.rows.forEach(r => {
+        if (r.product_name) suggestions.add(r.product_name);
+      });
+      return Array.from(suggestions).sort();
+    });
+  }
+
+  // Populate pack size dropdown + multi-select checkbox box from columns.
+  // The box is the source of truth (visibleCols); the dropdown is a shortcut.
+  // Surviving picks are kept when the dataset reloads; vanished sizes drop.
+  function populateSizeDropdown() {
+    const sel = document.getElementById("an-size");
+    const box = document.getElementById("an-sizes");
+    if (!analysisData || !sel) return;
+    const cols = allColumns();
+    if (visibleCols) {
+      const still = [...visibleCols].filter(k => cols.some(c => c.key === k));
+      visibleCols = still.length ? new Set(still) : null;
+    }
+    sel.innerHTML = `<option value="">All sizes</option>` +
+      cols.map(c => `<option value="${esc(c.key)}">${esc(c.label)}</option>`).join("");
+    if (box) {
+      const checked = visibleCols || null;
+      box.innerHTML =
+        `<div class="an-sizes-head"><span id="an-sizes-count"></span>` +
+        `<span><button type="button" class="an-sizes-reset" onclick="resetSizes()">Reset</button>` +
+        `<button type="button" class="an-sizes-reset" onclick="toggleSizesPanel(false)">Done</button></span></div>` +
+        cols.map(c => `<label><input type="checkbox" data-size-key="${esc(c.key)}"${!checked || checked.has(c.key) ? " checked" : ""} /> ${esc(c.label)}</label>`).join("");
+      box.querySelectorAll('input[data-size-key]').forEach(cb => {
+        cb.addEventListener("change", () => window.toggleSize(cb.getAttribute("data-size-key"), cb.checked));
+      });
+    }
+    syncSizeUI();
+  }
+
+  function isColVisible(key) {
+    if (!visibleCols) return true;
+    return visibleCols.has(key);
+  }
+
+  window.toggleSize = function (key, on) {
+    const cols = allColumns().map(c => c.key);
+    const s = new Set(visibleCols || cols);
+    if (on) s.add(key);
+    else s.delete(key);
+    // All checked collapses to the "all" state; empty means no columns.
+    visibleCols = s.size === cols.length ? null : s;
+    window.renderAnalysis();
+  };
+
+  // Reset option for the size box: back to all sizes, panel folds.
+  window.resetSizes = function () {
+    visibleCols = null;
+    const box = document.getElementById("an-sizes");
+    if (box) box.classList.add("collapsed");
+    window.renderAnalysis();
+  };
+
+  // Foldable panel: ticking boxes never folds (multi-pick in one go); the
+  // panel folds on Done, Reset, single-pick, outside click or Escape.
+  window.toggleSizesPanel = function (force) {
+    const box = document.getElementById("an-sizes");
+    if (!box) return;
+    const open = force !== undefined ? !!force : box.classList.contains("collapsed");
+    box.classList.toggle("collapsed", !open);
+    paintSizesToggle();
+  };
+
+  function paintSizesToggle() {
+    const btn = document.getElementById("an-sizes-toggle");
+    const box = document.getElementById("an-sizes");
+    if (!btn) return;
+    const cols = allColumns();
+    const n = visibleCols ? visibleCols.size : cols.length;
+    const what = (!visibleCols || n === cols.length) ? "All"
+      : (n === 0 ? "None" : (n === 1 ? colLabel([...visibleCols][0]) : `Multiple (${n})`));
+    const open = box && !box.classList.contains("collapsed");
+    btn.innerHTML = `☑ Sizes: ${esc(what)} <span>${open ? "▴" : "▾"}</span>`;
+  }
+
+  // Dismiss on outside click / Escape. Bound once: the page IIFE reruns on
+  // every visit, so the guard stops duplicate document listeners piling up.
+  (function bindSizesDismiss() {
+    if (window.__anSizesDismissBound) return;
+    window.__anSizesDismissBound = true;
+    document.addEventListener("click", (e) => {
+      const box = document.getElementById("an-sizes");
+      if (!box || box.classList.contains("collapsed")) return;
+      if (e.target.closest && (e.target.closest("#an-sizes") || e.target.closest("#an-sizes-toggle"))) return;
+      box.classList.add("collapsed");
+      paintSizesToggle();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      const box = document.getElementById("an-sizes");
+      if (!box || box.classList.contains("collapsed")) return;
+      box.classList.add("collapsed");
+      paintSizesToggle();
+    });
+  })();
+
+  // Dropdown shortcut: one pick isolates that size, All checks everything.
+  // Temp "Multiple…"/"None…" states never land here (guarded).
+  window.onAnSizeDropdown = function () {
+    const sel = document.getElementById("an-size");
+    if (!sel) return;
+    const v = sel.value;
+    if (v === "__multi__" || v === "__none__") { syncSizeUI(); return; }
+    visibleCols = v ? new Set([v]) : null;
+    const box = document.getElementById("an-sizes");
+    if (box) box.classList.add("collapsed");
+    window.renderAnalysis();
+  };
+
+  // Mirror the box state into the dropdown + count label.
+  // Never mutates visibleCols: the checkbox box owns it.
+  function syncSizeUI() {
+    const sel = document.getElementById("an-size");
+    const box = document.getElementById("an-sizes");
+    if (!sel) return;
+    const cols = allColumns();
+    sel.querySelectorAll('option[value="__multi__"],option[value="__none__"]').forEach(o => o.remove());
+    const n = visibleCols ? visibleCols.size : cols.length;
+    if (!visibleCols || n === cols.length) { sel.value = ""; }
+    else if (n === 1) { sel.value = [...visibleCols][0]; }
+    else if (n === 0) {
+      const o = document.createElement("option");
+      o.value = "__none__"; o.textContent = "None selected…";
+      sel.appendChild(o); sel.value = "__none__";
+    } else {
+      const o = document.createElement("option");
+      o.value = "__multi__"; o.textContent = `Multiple (${n})…`;
+      sel.appendChild(o); sel.value = "__multi__";
+    }
+    if (sel.value !== "" && ![...sel.options].some(o => o.value === sel.value)) sel.value = "";
+    const count = document.getElementById("an-sizes-count");
+    if (count) count.textContent = (!visibleCols || n === cols.length) ? `${cols.length} selected` : (n === 0 ? "None" : `${n} of ${cols.length}`);
+    paintSizesToggle();
+    if (box) box.querySelectorAll("input[data-size-key]").forEach(cb => {
+      const on = !visibleCols || visibleCols.has(cb.getAttribute("data-size-key"));
+      if (cb.checked !== on) cb.checked = on;
+    });
+  }
+
+  // Table style experiment (Classic default, Bold ledger opt-in). Applied
+  // to <body> so it flips instantly with no reload; monthly-sales shares
+  // the table classes, so every rule below is scoped to this page's ids.
+  const ANSTYLE_KEY = "an_style";
+  const ANSTYLES = ["classic", "ledger", "groups", "sparks", "heat", "ink"];
+  function applyAnStyle(which) {
+    const v = ANSTYLES.includes(which) ? which : "classic";
+    document.body.dataset.anstyle = v;
+    const sel = document.getElementById("an-style");
+    if (sel) sel.value = v;
+    try { localStorage.setItem(ANSTYLE_KEY, v); } catch (e) {}
+  }
+  window.setAnStyle = function (v) {
+    applyAnStyle(v);
+    // Bars live in the row markup, so switching styles re-renders.
+    if (analysisData) window.renderAnalysis();
+  };
+
+  // Clear all filters
+  window.clearAllFilters = function () {
+    document.getElementById("an-search").value = "";
+    document.getElementById("an-cat").value = "";
+    document.getElementById("an-size").value = "";
+    document.getElementById("an-from").value = "";
+    document.getElementById("an-to").value = "";
+    visibleCols = null;
+    // Dates are loaded server-side (the From/To onchange refetches), so a
+    // bare re-render would replay the stale range and blank the table.
+    // Clearing must refetch exactly like editing a date does.
+    window.loadAnalysis();
+  };
+
+  const fmtN = n => (n === null || n === undefined || n === "" ? "—"
+    : Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 }) + " pkts");
+  const fmtKg = n => (n === null || n === undefined || n === "" ? "—"
+    : Number(n).toLocaleString("en-IN", { maximumFractionDigits: 3 }) + " kg");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function colLabel(key) {
+    const col = allColumns().find(c => c.key === key);
+    return col ? col.label : key;
+  }
+
+  function bucketKeys() {
+    return allColumns().filter(c => isColVisible(c.key)).map(c => c.key);
+  }
+
+  function bucketOf(r, key) {
+    return r.buckets[key] || { stock_packets: 0, sale_packets: 0, bal_packets: 0,
+                               bal_kg: 0, pack_weight_kg: null, sizes: [] };
+  }
+
+  /* Heatmap alpha from magnitude: faint wash at zero, deep at the max.
+     Green for stock on hand, red for negative BAL. Translucent fills read
+     on light and dark surfaces alike. */
+  function heatStyleFor(v, max) {
+    const a = max > 0 ? Math.min(1, Math.abs(v) / max) : 0;
+    const alpha = (0.08 + 0.5 * a).toFixed(2);
+    return v < 0 ? `background:rgba(190,18,60,${alpha});` : `background:rgba(4,120,87,${alpha});`;
+  }
+
+  function balCell(r, key, heat) {
+    const b = bucketOf(r, key);
+    const gi = bucketKeys().indexOf(key) % 2 ? "b" : "a";
+    const neg = b.bal_packets < 0;
+    const hasVal = (parseFloat(b.bal_packets) || 0) !== 0;
+    const cls = "num bal-cell col-bal grp-" + gi + (neg ? " neg" : "") + (heat ? " heat-cell" : "") +
+      (hasVal ? " ink-nz" : "") + (neg ? " ink-neg" : "");
+    const title = (b.sizes || []).join(", ") + " — click for transactions";
+    const val = fmtN(b.bal_packets);
+    const body = !hasVal ? val : neg ? `<span class="ink-box">${val}</span>` : `<span class="ink-box ink-bal">${val}</span>`;
+    return `<td class="${cls}"${heat ? ` style="${heat}"` : ""} title="${esc(title)}" onclick="drillDown(${r.product_id}, '${key}')">${body}</td>`;
+  }
+
+  let anSort = { key: null, dir: 1 };
+
+  window.setAnSort = function (key) {
+    if (anSort.key === key) anSort.dir = anSort.dir === 1 ? -1 : 1;
+    else { anSort.key = key; anSort.dir = 1; }
+    window.renderAnalysis();
+  };
+
+  function anArrow(key) {
+    return (window.UI.sortArrow ? window.UI.sortArrow(anSort, key) : "");
+  }
+
+  function renderHead() {
+    const keys = bucketKeys();
+    let h1 = `<tr><th class="col-product" rowspan="2" onclick="setAnSort('product_name')" style="cursor:pointer; user-select:none;" title="Sort by product">Product${anArrow("product_name")}</th>`;
+    keys.forEach((k, gi) => {
+      // w<i> is the per-weight header tint (see the palette in <style>); the
+      // index wraps at 10 so the colours never run out, whatever the master
+      // holds. grp-a/grp-b still drive the optional "Group columns" skin.
+      h1 += `<th colspan="3" class="grouphead w${gi % AN_PALETTE} grp-${gi % 2 ? "b" : "a"}">${esc(colLabel(k))}</th>`;
+    });
+    h1 += `<th rowspan="2" onclick="setAnSort('total_ready_kg')" style="cursor:pointer; user-select:none;" title="Sort by Total Ready">Total Ready${anArrow("total_ready_kg")}</th><th rowspan="2">⚠</th></tr>`;
+    let h2 = `<tr>`;
+    keys.forEach(() => { h2 += `<th class="pill-stock">Stock</th><th class="pill-sale">Sale</th><th class="pill-bal">BAL</th>`; });
+    h2 += `</tr>`;
+    document.getElementById("an-head").innerHTML = h1 + h2;
+  }
+
+  // The checkbox box owns column visibility (visibleCols); this only mirrors
+  // that state into the dropdown/count so a re-render never stomps the picks.
+  function applySizeColumns() {
+    syncSizeUI();
+  }
+
+  function filteredRows() {
+    if (!analysisData) return [];
+    const q = (document.getElementById("an-search").value || "").trim().toLowerCase();
+    const cat = document.getElementById("an-cat").value;
+    const selSizes = visibleCols ? [...visibleCols] : null;
+    return analysisData.rows.filter(r => {
+      if (cat && (r.category || "") !== cat) return false;
+      if (selSizes) {
+        // Multi-select: keep rows that have data in ANY picked size.
+        const hit = selSizes.some(k => {
+          const b = r.buckets[k] || null;
+          return b && ((b.stock_packets || 0) !== 0 || (b.sale_packets || 0) !== 0 || (b.bal_packets || 0) !== 0 || (b.bal_kg || 0) !== 0);
+        });
+        if (!hit) return false;
+      }
+      if (q) {
+        const pname = (r.product_name || "").toLowerCase();
+        // Also match against size names in buckets
+        const sizeMatch = Object.keys(r.buckets || {}).some(k => {
+          const col = allColumns().find(c => c.key === k);
+          return (col ? col.label : k).toLowerCase().includes(q);
+        });
+        if (!pname.includes(q) && !sizeMatch) return false;
+      }
+      return true;
+    });
+  }
+
+  // Split-table plumbing: the header lives outside the scroll box, so
+  // widths and horizontal scroll are mirrored here. Bound once (these
+  // wrapper divs survive every re-render); syncAnWidths runs per render.
+  (function bindAnScrollSync() {
+    const head = document.querySelector(".analysis-head-wrap");
+    const body = document.querySelector(".analysis-wrap");
+    if (!head || !body || body.dataset.syncBound) return;
+    body.dataset.syncBound = "1";
+    // Two-way: whichever box the user (or touchpad) scrolls, the other
+    // follows. The guard stops the pair ping-ponging.
+    let syncing = false;
+    body.addEventListener("scroll", () => {
+      if (syncing) return;
+      syncing = true;
+      head.scrollLeft = body.scrollLeft;
+      syncing = false;
+    });
+    head.addEventListener("scroll", () => {
+      if (syncing) return;
+      syncing = true;
+      body.scrollLeft = head.scrollLeft;
+      syncing = false;
+    });
+    window.addEventListener("resize", () => syncAnWidths());
+  })();
+
+  /* Column widths are content-driven: copy the rendered body widths onto
+     the header (tfoot row always exists, even with zero body rows), then
+     pin both tables to fixed layout at the measured total. Border-box
+     keeps measured == set on both sides. */
+  function syncAnWidths() {
+    const headTable = document.getElementById("an-head-table");
+    const bodyTable = document.getElementById("an-body-table");
+    if (!headTable || !bodyTable) return;
+    // Header cells that pair 1:1 with body cells: the corner, the pills
+    // row, then Ready/Warn. Group cells (colspan=3) are skipped — they
+    // derive their width from the trio below. Measuring every thead cell
+    // can never match one body row, so the old count guard failed open
+    // and widths never synced.
+    const corner = headTable.querySelector("thead tr:first-child th.col-product");
+    const pills = [...headTable.querySelectorAll("thead tr:nth-child(2) th")];
+    const tail = [...headTable.querySelectorAll("thead tr:first-child th")].slice(-2);
+    if (!corner || !pills.length || tail.length < 2) return;
+    const headCols = [corner, ...pills, ...tail];
+    const rows = [...bodyTable.querySelectorAll("tbody tr, tfoot tr")];
+    if (!rows.length) return;
+    // The first row defines the body's fixed-layout columns, so it is the
+    // structural reference. The empty-state colspan row bails: with no data
+    // there is nothing to align.
+    const bodyCells = rows[0].querySelectorAll("td");
+    if (bodyCells.length !== headCols.length) return;
+    // Reset both to auto so measurement sees natural content widths, not
+    // whatever the previous sync pinned (resize re-runs this on a live DOM).
+    headTable.style.width = "";
+    bodyTable.style.width = "";
+    headTable.style.tableLayout = "";
+    bodyTable.style.tableLayout = "";
+    headCols.forEach(th => { th.style.width = ""; });
+    rows.forEach(tr => tr.querySelectorAll("td").forEach(td => { td.style.width = ""; }));
+    // A column must fit EVERY row — the wide "17,588 pkts" pills lower down,
+    // the ⚠ text, the totals. Measuring only the first row pinned columns to
+    // a product that happened to sort first; with fixed layout anything
+    // wider then clipped ("0 pkts" reading "0..pkts").
+    const widths = headCols.map((th, i) => {
+      let w = th.offsetWidth;
+      rows.forEach(tr => {
+        const td = tr.querySelectorAll("td")[i];
+        if (td && td.offsetWidth > w) w = td.offsetWidth;
+      });
+      return w;
+    });
+    const total = widths.reduce((a, b) => a + b, 0);
+    // Body: fixed layout sizes its columns from the FIRST row's cells, so
+    // the measured widths live there and every later row follows.
+    bodyTable.style.tableLayout = "fixed";
+    bodyTable.style.width = total + "px";
+    widths.forEach((w, i) => { bodyCells[i].style.width = w + "px"; });
+    // Head: its first row is the GROUP row (colspan cells), so a fixed
+    // layout there split the trio evenly and ignored the pill widths on
+    // row two — the header bands drifted off the body columns. Auto layout
+    // honors explicit widths on any row; pinning the table to exactly
+    // their sum leaves every column no room to settle anywhere else.
+    headTable.style.width = total + "px";
+    headCols.forEach((th, i) => { th.style.width = widths[i] + "px"; });
+  }
+
+  window.renderAnalysis = function () {
+    if (!analysisData) return;
+    applySizeColumns();
+    renderHead();
+    const keys = bucketKeys();
+    let rows = filteredRows();
+    if (window.UI.sortRows) rows = window.UI.sortRows(rows, anSort.key, anSort.dir);
+    const sparksOn = document.body.dataset.anstyle === "sparks";
+    const heatOn = document.body.dataset.anstyle === "heat";
+    const maxReady = Math.max.apply(null, rows.map(r => parseFloat(r.total_ready_kg) || 0).concat([0]));
+    const maxAbsBal = Math.max.apply(null, rows.flatMap(r => keys.map(k => Math.abs(bucketOf(r, k).bal_packets || 0))).concat([0]));
+    const body = document.getElementById("an-body");
+    if (!rows.length) {
+      body.innerHTML = `<tr><td colspan="30" style="color:var(--color-text-muted);">No products match.</td></tr>`;
+    } else {
+      body.innerHTML = rows.map(r => {
+        let tds = `<td class="col-product">${esc(r.product_name)}` +
+          (r.warnings && r.warnings.length ? ` <span title="${esc(r.warnings.join("\n"))}">⚠</span>` : "") +
+          `<br><span style="font-weight:400; font-size:11px; color:var(--color-text-muted);">${esc(r.category || "")}</span></td>`;
+        keys.forEach(k => {
+          const b = bucketOf(r, k);
+          const neg = v => (v < 0 ? "neg ink-neg " : "") + "num";
+          const g = " grp-" + (keys.indexOf(k) % 2 ? "b" : "a");
+          const inkNz = v => ((parseFloat(v) || 0) !== 0 ? " ink-nz" : "");
+          const inkWrap = (kind, v) => {
+            const t = fmtN(v);
+            const n = parseFloat(v) || 0;
+            if (n === 0) return t;
+            return n < 0 ? `<span class="ink-box">${t}</span>`
+              : `<span class="ink-box ${kind}">${t}</span>`;
+          };
+          tds += `<td class="${neg(b.stock_packets)} col-stock${g}${inkNz(b.stock_packets)}">${inkWrap("ink-stock", b.stock_packets)}</td>` +
+                 `<td class="${neg(b.sale_packets)} col-sale${g}${inkNz(b.sale_packets)}">${inkWrap("ink-sale", b.sale_packets)}</td>` +
+                 balCell(r, k, heatOn ? heatStyleFor(bucketOf(r, k).bal_packets || 0, maxAbsBal) : "");
+        });
+        const negReady = r.total_ready_kg < 0 ? "neg num" : "num";
+        const readyVal = parseFloat(r.total_ready_kg) || 0;
+        const readyPct = maxReady > 0 && readyVal > 0 ? Math.round(readyVal / maxReady * 100) : 0;
+        const readyInner = `<strong>${fmtKg(r.total_ready_kg)}</strong>`;
+        const readyBoxed = readyVal === 0 ? readyInner : readyVal < 0 ? `<span class="ink-box">${readyInner}</span>` : `<span class="ink-box ink-bal">${readyInner}</span>`;
+        tds += `<td class="${negReady}">` + (sparksOn
+          ? `<span class="spark-cell"><span class="spark-fill" style="width:${readyPct}%"></span><span class="spark-val">${readyInner}</span></span>`
+          : readyBoxed) + `</td>` +
+               `<td>${(r.warnings && r.warnings.length) || ""}</td>`;
+        return `<tr>${tds}</tr>`;
+      }).join("");
+    }
+    // Totals row (server-side, all sizes)
+    const t = analysisData.totals;
+    let f = `<tr><td class="col-product">TOTAL</td>`;
+    keys.forEach(k => {
+      const b = { s: 0, sa: 0 };
+      rows.forEach(r => { const bk = bucketOf(r, k); b.s += bk.stock_packets || 0; b.sa += bk.sale_packets || 0; });
+      const bal = b.s - b.sa;
+      const box = (kind, v) => { const n = parseFloat(v) || 0; const t = fmtN(v); if (n === 0) return t; return n < 0 ? `<span class="ink-box">${t}</span>` : `<span class="ink-box ${kind}">${t}</span>`; };
+      f += `<td class="num col-stock">${box("ink-stock", b.s)}</td><td class="num col-sale">${box("ink-sale", b.sa)}</td>` +
+           `<td class="num col-bal${bal < 0 ? " neg" : ""}">${box("ink-bal", bal)}</td>`;
+    });
+    const readySum = rows.reduce((s, r) => s + (r.total_ready_kg || 0), 0);
+    const readySumInner = `<strong>${fmtKg(readySum)}</strong>`;
+    const readySumBody = (parseFloat(readySum) || 0) === 0 ? readySumInner : readySum < 0 ? `<span class="ink-box">${readySumInner}</span>` : `<span class="ink-box ink-bal">${readySumInner}</span>`;
+    f += `<td class="num">${readySumBody}</td><td></td></tr>`;
+    document.getElementById("an-foot").innerHTML = f;
+
+    // Cards reflect the filtered view
+    document.getElementById("an-total-ready").textContent = fmtKg(readySum);
+    document.getElementById("an-products").textContent = rows.length;
+    const anCount = document.getElementById("an-count");
+    if (anCount) anCount.textContent =
+      "Showing " + rows.length + " of " + analysisData.rows.length + " products";
+    let negRows = 0, warns = 0;
+    rows.forEach(r => {
+      if (keys.some(k => bucketOf(r, k).bal_packets < 0)) negRows++;
+      warns += (r.warnings || []).length;
+    });
+    const negEl = document.getElementById("an-neg");
+    negEl.textContent = negRows;
+    negEl.style.color = negRows ? "var(--color-danger)" : "inherit";
+    document.getElementById("an-warn").textContent = warns;
+    syncAnWidths();
+  };
+
+  window.closeAnModal = function () {
+    const modal = document.getElementById("an-modal");
+    if (modal) modal.style.display = "none";
+  };
+
+  // Wired once: backdrop click and Esc both close, so a long transaction
+  // list never strands the close control below the fold.
+  function wireAnModalDismiss() {
+    const modal = document.getElementById("an-modal");
+    if (!modal || modal.dataset.dismissBound) return;
+    modal.dataset.dismissBound = "1";
+    modal.addEventListener("mousedown", (e) => {
+      if (e.target === modal) window.closeAnModal();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      const m = document.getElementById("an-modal");
+      if (m && m.style.display !== "none") window.closeAnModal();
+    });
+  }
+
+  window.drillDown = async function (productId, bucket) {
+    const modal = document.getElementById("an-modal");
+    const body = document.getElementById("an-modal-body");
+    document.getElementById("an-modal-title").textContent = "Transactions";
+    body.innerHTML = "<p>Loading…</p>";
+    if (window.UI && window.UI.resetDraggable) {
+      window.UI.resetDraggable(modal.querySelector(".modal-card"));
+    }
+    wireAnModalDismiss();
+    modal.style.display = "flex";
+    try {
+      const q = `?product_id=${productId}&bucket=${encodeURIComponent(bucket)}` +
+        `&from_date=${encodeURIComponent(document.getElementById("an-from").value)}` +
+        `&to_date=${encodeURIComponent(document.getElementById("an-to").value)}`;
+      const d = await window.UI.api("/analysis/transactions" + q);
+      document.getElementById("an-modal-title").textContent =
+        `${d.product_name} — ${colLabel(bucket)}`;
+      const tbl = (title, rows, cols) => {
+        if (!rows.length) return `<h4 style="margin:10px 0 6px;">${title} (0)</h4><p style="color:var(--color-text-muted);">None.</p>`;
+        // Raw API numerics carry storage decimals (25.000); route each cell
+        // through the matching display formatter by column name.
+        const cellVal = (key, v) => {
+          if (v == null || v === "") return "—";
+          // Dates route through the shared formatter: imported rows are
+          // midnight (business date only) and must not print a fake
+          // "T00:00:00"; rows entered by hand keep their real entry time.
+          if (key === "date") return window.UI.fmtDateTime(v);
+          if (/(amount|total|price|value)$/.test(key)) return window.UI.money(v);
+          if (/(kg|weight|quantity|packets)$/.test(key)) return window.UI.trimNum(v);
+          return v;
+        };
+        return `<h4 style="margin:10px 0 6px;">${title} (${rows.length})</h4><div class="table-wrap"><table><thead><tr>` +
+          cols.map(c => `<th>${c[1]}</th>`).join("") + `</tr></thead><tbody>` +
+          rows.map(r => `<tr>${cols.map(c => `<td>${esc(cellVal(c[0], r[c[0]]))}</td>`).join("")}</tr>`).join("") +
+          `</tbody></table></div>`;
+      };
+      body.innerHTML =
+        tbl("Production", d.production, [["number", "Number"], ["date", "Date"], ["target_kg", "Target kg"], ["actual_kg", "Actual kg"], ["status", "Status"]]) +
+        tbl("Sales", d.sales, [["challan", "Challan"], ["date", "Date"], ["customer", "Customer"], ["packets", "Packets"], ["weight_kg", "Kg"], ["amount", "Amount"]]) +
+        tbl("Stock Movements", d.movements, [["date", "Date"], ["type", "Type"], ["reference", "Ref"], ["quantity_kg", "Kg"]]);
+    } catch (e) {
+      body.innerHTML = `<p style="color:var(--color-danger);">Failed: ${esc(e.message || e)}</p>`;
+    }
+  };
+
+  window.exportAnalysis = async function () {
+    const params = new URLSearchParams({
+      from_date: document.getElementById("an-from").value,
+      to_date: document.getElementById("an-to").value,
+      category: document.getElementById("an-cat").value,
+    });
+    try {
+      await window.UI.download("/analysis/export?" + params.toString(), "stock_sales_analysis.xlsx");
+    } catch (e) {
+      window.UI.notify(e.message || "Export failed", "error");
+    }
+  };
+
+  async function loadAnalysis() {
+    const params = new URLSearchParams({
+      from_date: document.getElementById("an-from").value,
+      to_date: document.getElementById("an-to").value,
+    });
+    try {
+      const d = await window.UI.api("/analysis/stock-sales?" + params.toString());
+      analysisData = d;
+      visibleCols = null;  // reset column visibility when the dataset changes
+      const rows = d.rows;
+      const sel = document.getElementById("an-cat");
+      const cur = sel.value;
+      // Master-driven: every active category is selectable, even one with
+      // no movements yet (it honestly renders "No products match"). Row
+      // categories join in so a renamed master never strands a row.
+      let masterCats = [];
+      try {
+        masterCats = ((await window.UI.api("/product-categories")) || [])
+          .filter(c => c.is_active !== false).map(c => c.name).filter(Boolean);
+      } catch (e) { console.error("Analysis categories", e); }
+      const rowCats = [...new Set(rows.map(r => r.category).filter(Boolean))];
+      const cats = [...new Set([...masterCats, ...rowCats])]
+        .sort((a, b) => String(a).localeCompare(String(b), "en-IN"));
+      sel.innerHTML = `<option value="">All categories</option>` +
+        cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+      if (cats.includes(cur)) sel.value = cur;
+      else sel.value = "";
+      if (window.UI.quickSelect) window.UI.quickSelect(sel, "Type category…");
+      // Populate filter UI
+      populateProductSuggestions();
+      populateSizeDropdown();
+      window.renderAnalysis();
+    } catch (e) {
+      console.error("Analysis", e);
+      window.UI.notify(e.message || "Failed to load analysis", "error");
+    }
+  }
+
+  // See challans.html: inline onchange handlers resolve in the global scope.
+  window.loadAnalysis = loadAnalysis;
+
+  try { applyAnStyle(localStorage.getItem(ANSTYLE_KEY) || "classic"); }
+  catch (e) { applyAnStyle("classic"); }
+  loadAnalysis();
+})();
+</script>

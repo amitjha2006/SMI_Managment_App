@@ -1,0 +1,378 @@
+<!-- Monthly Product Sales pivot -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+    <h2 style="font-size: 18px; font-weight: 600; margin:0;">Monthly Product Sales</h2>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="btn btn-sm btn-primary" id="ms-view-amount" onclick="setPivotView('amount')">Amount ₹</button>
+      <button class="btn btn-sm btn-secondary" id="ms-view-weight" onclick="setPivotView('weight')">Weight Kg</button>
+      <button class="btn btn-export btn-sm" onclick="exportPivot()">Export Excel</button>
+      <button class="btn btn-export btn-sm" onclick="window.print()">Print / PDF</button>
+    </div>
+  </div>
+  <div class="form-row" style="align-items:flex-end; max-width:640px;">
+    <div class="form-group"><label>Year</label><select id="ms-year" onchange="loadPivot()"></select></div>
+    <label style="display:flex; align-items:center; gap:6px; font-size:13px; padding-bottom:9px; cursor:pointer; white-space:nowrap;">
+      <input id="ms-fy" type="checkbox" onchange="toggleFyMode()" /> FY (Apr–Mar)
+    </label>
+    <div class="form-group" style="position:relative;"><label>Search Product</label><input id="ms-search" type="search" placeholder="Type product name…" autocomplete="off" oninput="renderPivot(); renderSuggest();" onfocus="renderSuggest();" onkeydown="if(event.key==='Escape'){hideSuggest();}" onblur="setTimeout(hideSuggest, 150)" /><div id="ms-suggest" style="display:none; position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--color-border); border-radius:6px; margin-top:2px; max-height:220px; overflow:auto; z-index:50; box-shadow:0 8px 24px rgba(0,0,0,0.12);"></div></div>
+    <div class="form-group"><label>Category</label><select id="ms-cat" onchange="renderPivot(); renderSuggest();" title="Show only products in this category"><option value="">All categories</option></select></div>
+    <div class="form-group" style="align-self:flex-end;"><button class="btn btn-secondary btn-sm" type="button" onclick="resetMonthlySalesFilters()" title="Clear search and category (the year stays)">↺ Reset</button></div>
+  </div>
+
+  <div class="table-wrap analysis-wrap" style="margin-top:12px;">
+    <table class="analysis-table">
+      <thead id="ms-head"></thead>
+      <tbody id="ms-body"></tbody>
+      <tfoot id="ms-foot"></tfoot>
+    </table>
+  </div>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-top:8px;">Click a value to see that month's challans. Cancelled challans are excluded.</p>
+</div>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+    <h2 style="font-size: 18px; font-weight: 600; margin:0;">Profit & Loss</h2>
+    <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+      <div class="form-group" style="margin:0;"><label>Month</label><input id="pl-month" type="month" onchange="loadProfit()" /></div>
+      <button class="btn btn-secondary btn-sm" id="pl-year-btn" onclick="toggleProfitYear()">Whole year</button>
+    </div>
+  </div>
+  <div id="pl-body" style="font-size:14px;">Loading…</div>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-top:8px;">Sales minus purchases, expenses and payroll. Draft and archived records never count.</p>
+</div>
+
+<div id="ms-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Month details" style="max-width:720px;">
+    <div class="modal-head" data-drag-handle title="Drag to move">
+      <h3 id="ms-modal-title">Details</h3>
+      <button class="modal-close" type="button" aria-label="Close" onclick="closeMsModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="ms-modal-body" style="font-size:13px;"></div>
+      <div style="display:flex; justify-content:flex-end; margin-top:14px;">
+        <button class="btn btn-danger-outline" onclick="closeMsModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.analysis-wrap { max-height: 65vh; overflow: auto; }
+.analysis-table { border-collapse: separate; border-spacing: 0; font-size: 13px; width: 100%; }
+.analysis-table thead th {
+  position: sticky; top: 0; z-index: 3;
+    background: linear-gradient(180deg, #0a6b64 0%, #085952 100%); color: #ffffff;
+  border-bottom: 2px solid var(--color-border); white-space: nowrap;
+}
+.analysis-table td { padding: 8px 12px; border-bottom: 1px solid var(--color-border); white-space: nowrap; }
+.analysis-table tbody tr:hover td { background: #f5f8fc; }
+.analysis-table .col-month {
+  position: sticky; left: 0; z-index: 2; background: #fff; font-weight: 600;
+  box-shadow: 1px 0 0 var(--color-border);
+}
+  .analysis-table thead .col-month { z-index: 4; background: linear-gradient(180deg, #0a6b64 0%, #085952 100%); color: #ffffff; }
+.analysis-table tfoot td { font-weight: 700; background: #f5f8fc; position: sticky; bottom: 0; }
+.analysis-table tfoot .col-month { z-index: 2; }
+.analysis-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.analysis-table .cell-link { cursor: pointer; }
+.analysis-table .cell-link:hover { color: var(--color-primary); text-decoration: underline; }
+@media print {
+  .sidebar, .top-header, #toast-container, .btn, #ms-modal { display: none !important; }
+  .main-wrapper { margin-left: 0; min-width: 0; }
+  .main-content { max-width: 100%; padding: 0; }
+  .analysis-wrap { max-height: none; overflow: visible; }
+  .analysis-table { font-size: 11px; }
+  .card { box-shadow: none; }
+}
+</style>
+
+<script>
+(function(){
+  let pivotData = null;
+  let pivotView = "amount";
+  // Product name -> category name, for the category filter. Best-effort:
+  // a failed load leaves every product uncategorized (visible under All).
+  let prodCats = {};
+
+  async function loadMsCategories() {
+    try {
+      const list = await window.UI.api("/products") || [];
+      const cats = {};
+      (list || []).forEach(p => {
+        const cn = (p.category || p.category_name || "").trim();
+        if (p.name) prodCats[p.name] = cn;
+        if (cn) cats[cn] = true;
+      });
+      const sel = document.getElementById("ms-cat");
+      if (sel) {
+        const cur = sel.value || "";
+        sel.innerHTML = '<option value="">All categories</option>' +
+          Object.keys(cats).sort().map(c =>
+            `<option value="${esc(c)}"${c === cur ? " selected" : ""}>${esc(c)}</option>`).join("");
+      }
+    } catch (e) { console.error("Categories", e); }
+  }
+
+  const fmtMoney = n => (n === null || n === undefined || n === "" ? "—"
+    : "₹ " + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  const fmtKg = n => (n === null || n === undefined || n === "" ? "—"
+    : Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 }) + " kg");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function visibleProducts() {
+    if (!pivotData) return [];
+    const q = (document.getElementById("ms-search").value || "").trim().toLowerCase();
+    const cat = (document.getElementById("ms-cat") || {}).value || "";
+    return pivotData.products.filter(p =>
+      (!q || p.toLowerCase().includes(q)) &&
+      (!cat || (prodCats[p] || "") === cat));
+  }
+
+  // Suggestion dropdown for the product search: the box filters columns as
+  // you type, and this lists what matches so a product can be picked
+  // instead of typed exactly. Fed by the same loaded pivot products.
+  function renderSuggest() {
+    const box = document.getElementById("ms-suggest");
+    const searchEl = document.getElementById("ms-search");
+    if (!box) return;
+    // The category select also calls this on change: only drop the list
+    // down while the user is actually in the search box (typing or
+    // focused), never as a side effect of picking a category.
+    if (!searchEl || document.activeElement !== searchEl) { box.style.display = "none"; return; }
+    if (!pivotData || !pivotData.products) { box.style.display = "none"; return; }
+    const q = (document.getElementById("ms-search").value || "").trim().toLowerCase();
+    const cat = (document.getElementById("ms-cat") || {}).value || "";
+    const hits = pivotData.products.filter(p =>
+      (!q || p.toLowerCase().includes(q)) &&
+      (!cat || (prodCats[p] || "") === cat)).slice(0, 12);
+    if (!hits.length) { box.style.display = "none"; box.innerHTML = ""; return; }
+    box.innerHTML = hits.map(p =>
+      `<div data-name="${esc(p)}" style="padding:8px 12px; font-size:13px; cursor:pointer;" ` +
+      `onmousedown="pickSuggest(this.dataset.name)" ` +
+      `onmouseenter="this.style.background='#f5f8fc'" onmouseleave="this.style.background=''">${esc(p)}</div>`
+    ).join("");
+    box.style.display = "block";
+  }
+  window.renderSuggest = renderSuggest;
+
+  window.pickSuggest = function (name) {
+    document.getElementById("ms-search").value = name || "";
+    hideSuggest();
+    renderPivot();
+  };
+
+  function hideSuggest() {
+    const box = document.getElementById("ms-suggest");
+    if (box) { box.style.display = "none"; box.innerHTML = ""; }
+  }
+  window.hideSuggest = hideSuggest;
+
+  window.closeMsModal = function () {
+    const modal = document.getElementById("ms-modal");
+    if (modal) modal.style.display = "none";
+  };
+
+  function cellVal(cell) {
+    return pivotView === "amount" ? cell.amount : cell.weight;
+  }
+
+  function fmtCell(v) {
+    if (!v) return "—";
+    return pivotView === "amount" ? fmtMoney(v) : fmtKg(v);
+  }
+
+  window.setPivotView = function (v) {
+    pivotView = v;
+    document.getElementById("ms-view-amount").className =
+      "btn btn-sm " + (v === "amount" ? "btn-primary" : "btn-secondary");
+    document.getElementById("ms-view-weight").className =
+      "btn btn-sm " + (v === "weight" ? "btn-primary" : "btn-secondary");
+    renderPivot();
+  };
+
+  function renderPivot() {
+    if (!pivotData) return;
+    const prods = visibleProducts();
+    const head = document.getElementById("ms-head");
+    head.innerHTML = `<tr><th class="col-month">Month</th>` +
+      prods.map(p => `<th class="num">${esc(p)}</th>`).join("") +
+      `<th class="num">Grand Total</th></tr>`;
+    const body = document.getElementById("ms-body");
+    body.innerHTML = pivotData.months.map(m => {
+      const tds = prods.map(p => {
+        const v = cellVal(m.products[p]);
+        return `<td class="num cell-link" onclick="drillMonth('${m.key}', '${esc(p).replace(/'/g, "\\'")}')">${fmtCell(v)}</td>`;
+      }).join("");
+      const mt = pivotView === "amount" ? m.month_total_amount : m.month_total_weight;
+      return `<tr><td class="col-month">${m.label}</td>${tds}<td class="num"><strong>${window.UI.figBox(fmtCell(mt), mt)}</strong></td></tr>`;
+    }).join("");
+    // Grand total row recomputed over visible products
+    let g = 0;
+    prods.forEach(p => {
+      pivotData.months.forEach(m => { g += cellVal(m.products[p]) || 0; });
+    });
+    const gt = prods.map(p => {
+      let s = 0;
+      pivotData.months.forEach(m => { s += cellVal(m.products[p]) || 0; });
+      return `<td class="num"><strong>${window.UI.figBox(fmtCell(s), s)}</strong></td>`;
+    }).join("");
+    document.getElementById("ms-foot").innerHTML =
+      `<tr><td class="col-month">Grand Total</td>${gt}<td class="num"><strong>${window.UI.figBox(fmtCell(g), g)}</strong></td></tr>`;
+  }
+  window.renderPivot = renderPivot;
+
+  // Blank the search box and category filter; the year/FY choice is the
+  // dataset being viewed, not a filter, so it stays.
+  window.resetMonthlySalesFilters = function () {
+    document.getElementById("ms-search").value = "";
+    document.getElementById("ms-cat").value = "";
+    renderPivot();
+  };
+
+  // Dismiss helpers, wired once: backdrop click and Esc both close, so a
+  // long challan list never strands the close control below the fold.
+  function wireMsModalDismiss() {
+    const modal = document.getElementById("ms-modal");
+    if (!modal || modal.dataset.dismissBound) return;
+    modal.dataset.dismissBound = "1";
+    modal.addEventListener("mousedown", (e) => {
+      if (e.target === modal) window.closeMsModal();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      const m = document.getElementById("ms-modal");
+      if (m && m.style.display !== "none") window.closeMsModal();
+    });
+  }
+
+  window.drillMonth = async function (monthKey, productName) {
+    const modal = document.getElementById("ms-modal");
+    const body = document.getElementById("ms-modal-body");
+    document.getElementById("ms-modal-title").textContent = `${productName} — ${monthKey}`;
+    body.innerHTML = "<p>Loading…</p>";
+    if (window.UI && window.UI.resetDraggable) {
+      window.UI.resetDraggable(modal.querySelector(".modal-card"));
+    }
+    wireMsModalDismiss();
+    modal.style.display = "flex";
+    try {
+      const pid = pivotData.product_ids[productName];
+      const [y, m] = monthKey.split("-").map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
+      const q = `?product_id=${pid}&bucket=all` +
+        `&from_date=${y}-${String(m).padStart(2, "0")}-01&to_date=${y}-${String(m).padStart(2, "0")}-${lastDay}`;
+      const d = await window.UI.api("/analysis/transactions" + q);
+      if (!d.sales.length) {
+        body.innerHTML = "<p style='color:var(--color-text-muted);'>No challans this month.</p>";
+        return;
+      }
+      body.innerHTML = `<div class="table-wrap"><table><thead><tr>` +
+        `<th>Challan</th><th>Date</th><th>Customer</th><th>Packets</th><th>Weight (kg)</th><th>Amount</th>` +
+        `</tr></thead><tbody>` +
+        d.sales.map(s => `<tr><td>${esc(s.challan)}</td>` +
+          // created_at is the genuine recorded time; passing the business
+          // date twice stamped every imported row with a fake 12:00 AM.
+          `<td>${window.UI.dateWithTime(s.date, s.created_at)}</td>` +
+          `<td>${esc(s.customer || "—")}</td><td class="num">${esc(s.packets)}</td>` +
+          `<td class="num">${fmtKg(s.weight_kg)}</td><td class="num">${fmtMoney(s.amount)}</td></tr>`).join("") +
+        `</tbody></table></div>`;
+    } catch (e) {
+      body.innerHTML = `<p style="color:var(--color-danger);">Failed: ${esc(e.message || e)}</p>`;
+    }
+  };
+
+  window.exportPivot = async function () {
+    const v = document.getElementById("ms-year").value;
+    const param = isFyMode() ? ("fy=" + encodeURIComponent(v)) : ("year=" + encodeURIComponent(v));
+    try {
+      await window.UI.download(
+        `/analysis/monthly-export?${param}&view=${pivotView}`,
+        `monthly_sales_${isFyMode() ? "FY" + v : v}_${pivotView}.xlsx`);
+    } catch (e) {
+      window.UI.notify(e.message || "Export failed", "error");
+    }
+  };
+
+  function currentFy() {
+    const now = new Date();
+    return now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+  }
+
+  function isFyMode() {
+    const box = document.getElementById("ms-fy");
+    return !!(box && box.checked);
+  }
+
+  window.toggleFyMode = function () {
+    fillYears();
+    loadPivot();
+  };
+
+  function fillYears() {
+    const sel = document.getElementById("ms-year");
+    const cur = new Date().getFullYear();
+    let opts = "";
+    if (isFyMode()) {
+      for (let f = cur; f >= cur - 6; f--) {
+        const sel_attr = f === currentFy() ? " selected" : "";
+        opts += `<option value="${f}"${sel_attr}>${f}-${String(f + 1).slice(2)}</option>`;
+      }
+    } else {
+      for (let y = cur; y >= cur - 6; y--) opts += `<option value="${y}">${y}</option>`;
+    }
+    sel.innerHTML = opts;
+  }
+
+  async function loadPivot() {
+    const v = document.getElementById("ms-year").value;
+    const param = isFyMode() ? ("fy=" + encodeURIComponent(v)) : ("year=" + encodeURIComponent(v));
+    try {
+      pivotData = await window.UI.api("/analysis/monthly-sales?" + param);
+      window.renderPivot();
+    } catch (e) {
+      console.error("Pivot", e);
+      window.UI.notify(e.message || "Failed to load pivot", "error");
+    }
+  }
+  window.loadPivot = loadPivot;
+
+  // Profit & loss: month picker, or the whole year at one tap.
+  let profitYearMode = false;
+
+  window.toggleProfitYear = function () {
+    profitYearMode = !profitYearMode;
+    document.getElementById("pl-year-btn").textContent = profitYearMode ? "One month" : "Whole year";
+    loadProfit();
+  };
+
+  window.loadProfit = async function () {
+    const el = document.getElementById("pl-body");
+    try {
+      let period = document.getElementById("pl-month").value;
+      if (profitYearMode) period = (period || "").slice(0, 4);
+      const d = await window.UI.api("/reports/profit-loss?period=" + encodeURIComponent(period || ""));
+      const fmt = n => "₹ " + (parseFloat(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+      const row = (k, v, strong, danger) =>
+        `<div style="display:flex; justify-content:space-between; padding:4px 0;${strong ? " font-weight:700; border-top:1px solid var(--color-border); margin-top:4px; padding-top:8px;" : ""}${danger ? " color:var(--color-danger);" : ""}">` +
+        `<span>${k}</span><span class="num">${fmt(v)}</span></div>`;
+      const profit = parseFloat(d.profit) || 0;
+      el.innerHTML =
+        row("Sales", d.sales) + row("Purchases", d.purchases) +
+        row("Expenses", d.expenses) + row("Payroll", d.payroll) +
+        row("Profit (" + d.period + ")", d.profit, true, profit < 0);
+    } catch (e) {
+      el.innerHTML = "<p style='color:var(--color-danger)'>Could not load profit summary.</p>";
+    }
+  };
+
+  fillYears();
+  loadPivot();
+  loadMsCategories();
+  document.getElementById("pl-month").value =
+    new Date().getFullYear() + "-" + String(new Date().getMonth() + 1).padStart(2, "0");
+  loadProfit();
+})();
+</script>

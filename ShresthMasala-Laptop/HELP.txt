@@ -1,0 +1,60 @@
+Shresth Masala Industry - Management System
+=============================================
+(run-server.bat --help shows the short version of this file)
+
+
+TWO WAYS TO RUN (pick the folder you have)
+------------------------------------------
+A. Built app folder (has ShresthMasalaIndustry.exe):
+   Double-click run-server.bat - or the .exe itself.
+   Keep the .exe together with its _internal folder; moved alone it
+   will not start. First launch on a PC may need the free Microsoft
+   Edge WebView2 Runtime (Evergreen installer).
+
+B. Source folder (has backend\ and frontend\ + Python installed):
+   Double-click run-server.bat. It starts the server on
+   http://127.0.0.1:8000/ and opens your browser there.
+   Needs: free Python 3.12+ (tick "Add python.exe to PATH") +
+   one-time  pip install -r requirements.txt  (needs internet).
+   Port busy? Close the other copy, or  set PORT=8001 & run-server.bat
+
+Prefer the desktop window directly, with no browser? Double-click
+run-app.bat instead - exe if present, else the app window without
+a console window.
+Browser only, nothing else visible? run-browser.bat just opens the login
+page in your browser. Start the app itself first with run-app.bat,
+run-server.bat, or the exe.
+
+
+FIRST RUN EVER
+--------------
+The database starts empty: click Register, create the admin account,
+sign in. Then add masters in order: Customers -> Suppliers ->
+Raw Materials -> Products -> purchase invoices -> sales challans.
+
+
+YOUR DATA
+---------
+Everything lives in one file:  data\masala_factory.db
+(next to the .exe, or in the source folder - same relative place).
+Backups:  data\backups\  (manual + automatic copies).
+Move PCs by copying the whole app folder, or Backup -> Download
+inside the app and Restore on the new PC.
+
+
+TROUBLESHOOTING
+---------------
+- Blank window / old screens: hard refresh Ctrl+Shift+R.
+- Port busy / two copies: Task Manager -> end ShresthMasalaIndustry
+  or the python.exe running uvicorn. Only one copy holds the port.
+- .exe crashes on start: read app.log next to the .exe, last lines first.
+- Login fails on saves: sign out and in again (session expired).
+- Excel import fails: use Preview first; headers must match
+  templates\sample_*.xlsx (source folder); masters before transactions.
+
+SAFETY
+------
+The server binds 127.0.0.1 (this PC only) - never expose the port to a
+network; most endpoints have no login wall. To read the database by
+hand: close the app, copy masala_factory.db aside, open the COPY with
+the free DB Browser for SQLite. Never edit the live file directly.

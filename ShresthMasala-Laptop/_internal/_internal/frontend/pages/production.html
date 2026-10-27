@@ -1,0 +1,1346 @@
+<!-- Production -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h2 style="font-size: 18px; font-weight: 600;">Production</h2>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <label class="toggle-archived"><input type="checkbox" id="pe-show-archived" onchange="loadEntries()"> Show archived</label>
+      <button class="btn btn-primary" onclick="openNewProductionForm()">+ New Entry</button>
+    </div>
+  </div>
+
+  <div id="prod-entry-form" style="display:none; border-top:1px solid var(--color-border); padding-top:16px; margin-bottom:16px;">
+    <h4 style="font-size:14px; font-weight:600; margin-bottom:12px;">New Production Entry</h4>
+    <!-- Messages belong above the form: "Apply formulation…" is in the first
+         block now, and its success/error text used to land below the fold. -->
+    <div id="pe-msg" style="font-size:13px; margin-bottom:10px; color: var(--color-text-muted);"></div>
+    <form onsubmit="saveProduction(event)" id="new-prod-entry-form">
+      <!-- Sections follow the batch itself: materials come out of the store
+           first, then the product, then the stages, then packaging. -->
+      <h5 style="font-size:13px; font-weight:700; margin:16px 0 8px; padding-top:12px; border-top:1px solid var(--color-border);">Raw Materials Consumed</h5>
+      <div class="form-row">
+        <div class="form-group" style="max-width:260px;"><label>Target Qty (kg)</label><input id="pe-target" type="number" step="0.001" min="0" value="0" oninput="renderBatchSummary()" /></div>
+      </div>
+      <div id="pe-materials"></div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="addMaterialRow()">+ Add Material</button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="applyFormulation()" title="Fill materials from this product's saved mix ratio, scaled to the target qty">Apply formulation…</button>
+
+      <h5 style="font-size:13px; font-weight:700; margin:16px 0 8px; padding-top:12px; border-top:1px solid var(--color-border);">Product</h5>
+      <div class="form-row">
+        <div class="form-group"><label>Product</label><select id="pe-product"></select></div>
+        <div class="form-group"><label>Date</label><input id="pe-date" type="date" required /></div>
+      </div>
+      <div id="pe-formulation-guide" style="display:none; font-size:13px; background:#f5f8fc; border:1px solid var(--color-border); border-radius:6px; padding:10px 12px; margin-bottom:4px;"></div>
+      <div class="form-row" id="pe-quickadd" style="display:none; align-items:flex-end;">
+        <div class="form-group"><label>New product name</label><input id="pe-qa-name" placeholder="e.g. Garam Masala" /></div>
+        <div class="form-group"><label>First pack size</label><input id="pe-qa-size" placeholder="e.g. 100g" /></div>
+        <div class="form-group"><label>Weight</label><div style="display:flex; align-items:center; gap:6px;"><input id="pe-qa-weight" type="number" step="0.001" min="0" placeholder="e.g. 0.1" style="flex:1; min-width:0;" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">kg</span></div></div>
+        <div class="form-group" style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-primary btn-sm" onclick="saveQuickAddProduct()">Add</button>
+          <button type="button" class="btn btn-danger-outline btn-sm" onclick="cancelQuickAddProduct()">Cancel</button>
+        </div>
+      </div>
+
+      <h5 id="pe-stages-label" style="font-size:13px; font-weight:700; margin:16px 0 8px; padding-top:12px; border-top:1px solid var(--color-border);">Stages for this product</h5>
+      <div id="pe-stages"></div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="addStageRow(); refreshProductionDerived()">+ Add Stage</button>
+
+      <h5 style="font-size:13px; font-weight:700; margin:16px 0 8px; padding-top:12px; border-top:1px solid var(--color-border);">Packaging</h5>
+      <p style="font-size:13px; color:var(--color-text-muted); margin:0 0 10px;">
+        Pack sizes and wrapper rolls are recorded at packing time, not on this form.
+        Save the batch first, then press <strong>Pack</strong> on its row to weigh
+        pouches, pick rolls and post the finished stock.
+      </p>
+
+      <div class="form-row">
+        <div class="form-group"><label>Notes</label><input id="pe-notes" /></div>
+      </div>
+
+      <div id="pe-summary" style="margin-top:14px; border:1px solid var(--color-border); border-radius:6px; padding:10px 12px; background:#fafbfc;">
+        <div style="font-size:13px; font-weight:600; margin-bottom:6px; color:var(--color-text-muted);">Batch Summary</div>
+        <div id="pe-summary-body" style="font-size:13px;"></div>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:12px;">
+        <button type="submit" class="btn btn-primary">Save Entry</button>
+          <button type="button" class="btn btn-danger-outline" onclick="cancelProductionForm()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card" id="pe-detail-card" style="display:none;">
+  <h3>Production Details</h3>
+  <div id="pe-detail-body" style="font-size:14px; line-height:1.8;"></div>
+  <div id="pe-detail-actions" style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;"></div>
+  <div style="margin-top:10px;">
+    <button class="btn btn-danger-outline btn-sm" onclick="document.getElementById('pe-detail-card').style.display='none'">Close</button>
+  </div>
+</div>
+
+<!-- Part 2 of the two-step flow: sizes, packets and wrapper rolls are weighed
+     and recorded here, after the batch itself was saved unpacked. -->
+<div class="card" id="pe-pack-card" style="display:none;">
+  <h3>Pack Batch <span id="pe-pack-number" style="font-weight:400; color:var(--color-text-muted);"></span></h3>
+  <p id="pe-pack-msg" style="font-size:13px; color:var(--color-text-muted); margin-bottom:8px;"></p>
+  <div id="pe-pack-body"></div>
+  <p id="pe-pack-totals" style="font-size:13px; font-weight:600; margin:8px 0;"></p>
+  <div style="display:flex; gap:10px;">
+    <button class="btn btn-primary" data-approve onclick="savePack()">Save Pack</button>
+    <button class="btn btn-danger-outline" onclick="closePack()">Cancel</button>
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+    <h3 style="margin:0;">Production Entries</h3>
+    <input id="pe-search" type="search" placeholder="Search number, product, status…"
+      oninput="filterProduction()"
+      style="padding:8px 12px; border:1px solid var(--color-border); border-radius:6px; font-size:14px; min-width:240px;" />
+  </div>
+  <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:12px; flex-wrap:wrap;">
+    <div class="form-group" style="margin:0;"><label>From</label><input id="pe-from" type="date" onchange="peDateChanged()" /></div>
+    <div class="form-group" style="margin:0;"><label>To</label><input id="pe-to" type="date" onchange="peDateChanged()" /></div>
+    <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; padding-bottom:8px;">
+      <input type="checkbox" id="pe-fy-only" onchange="togglePeFy()" />
+      <span>Current FY only</span>
+    </label>
+    <button class="btn btn-secondary btn-sm" type="button" onclick="resetProductionFilters()" title="Clear search, dates and FY toggle" style="margin-bottom:6px;">↺ Reset</button>
+  </div>
+  <div id="pe-table"></div>
+  <p id="pe-count" style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"></p>
+</div>
+
+<script>
+(function(){
+  let allEntries = [];
+  let allProducts = [];
+  let allMaterials = [];
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  // Product Help rich tables: help_text is sanitized server-side (allowlist,
+  // no attributes), but rows predating that can hold anything, so rendering
+  // re-sanitizes. esc() first, then restore ONLY bare allowlisted tags —
+  // anything carrying attributes (<table onclick=...>) never matches and
+  // stays escaped.
+  const HELP_HTML_TAGS = ["table", "thead", "tbody", "tfoot", "tr", "th", "td",
+    "b", "strong", "i", "em", "u", "p", "ul", "ol", "li"];
+  function renderHelpHtml(raw) {
+    let h = esc(raw == null ? "" : raw);
+    for (const t of HELP_HTML_TAGS) {
+      h = h.split("&lt;" + t + "&gt;").join("<" + t + ">");
+      h = h.split("&lt;/" + t + "&gt;").join("</" + t + ">");
+    }
+    h = h.replace(/&lt;br\s*\/?&gt;/gi, "<br>");
+    return h;
+  }
+
+  /* Packets and kg arrive as decimal strings ("100.000", "7.500"). Packets are
+     whole units, so they are shown without decimals; weights show at most two. */
+  function fmtW2(n) {
+    const v = parseFloat(n);
+    if (isNaN(v)) return "—";
+    return String(Math.round(v * 1000) / 1000);
+  }
+  function fmtNum(v, dp) {
+    const n = parseFloat(v);
+    if (isNaN(n)) return "0";
+    return n.toFixed(dp == null ? 2 : dp);
+  }
+
+  // One batch may pack several sizes: "250g x 200 (50 kg), 50g x 400 (20 kg)".
+  // Legacy single-size entries expose the same shape via outputs, so this
+  // needs no special case.
+  function outputsSummary(d) {
+    const outs = (d && d.outputs) || [];
+    if (!outs.length) return esc(d.packaging_size_name || "—");
+    return outs.map(o =>
+      esc(o.packaging_size_name || ("#" + o.packaging_size_id)) +
+      " x " + fmtNum(o.packets, 0) + " (" + fmtNum(o.quantity_kg, 2) + " kg)"
+    ).join(", ");
+  }
+
+  function renderProductionTable(list) {
+    const rows = (list || []).map(e => ({
+      id: e.id,
+      _archived: !!e.is_archived,
+      number: (e.is_archived ? '<span class="badge badge-archived">Archived</span> ' : "") + (e.production_number || ""),
+      date: window.UI.dateWithTime(e.production_date, e.created_at),
+      dateKey: window.UI.tsKey(e.production_date, e.created_at),
+      product: e.product_name || "—",
+      pack: outputsSummary(e),
+      target: e.target_quantity != null ? fmtNum(e.target_quantity, 2) + " kg" : "0",
+      actual: e.actual_packets != null
+        ? fmtNum(e.actual_packets, 0) + " pkts (" + fmtNum(e.actual_output, 2) + " kg)" : "—",
+      status: (e.status || "—") +
+        // Not yet packed = Part 1 done, Part 2 (packaging) pending.
+        (e.packed_at == null && !e.is_archived
+          ? ' <span class="badge badge-warning">Unpacked</span>' : ""),
+      actions: `<span class="row-actions"><button class="btn btn-sm btn-info" onclick="viewProduction(${e.id})">View</button>` +
+        (e.packed_at == null && !e.is_archived
+          ? `<button class="btn btn-sm btn-primary" data-approve onclick="openPackDialog(${e.id})">Pack</button>`
+          : "") +
+        (e.is_archived
+          ? `<button class="btn btn-sm btn-restore" onclick="restoreProduction(${e.id})">Restore</button>`
+          : `<button class="btn btn-sm btn-danger" onclick="deleteProduction(${e.id})">Archive</button>`) +
+        `</span>`
+    }));
+    const container = document.getElementById("pe-table");
+    if (container && window.UI.renderTable) {
+      window.UI.renderTable(container, rows, [
+        {key:"number",label:"Number"},{key:"date",label:"Date"},{key:"product",label:"Product"},
+        {key:"pack",label:"Packaging"},        {key:"target",label:"Target"},{key:"actual",label:"Actual"},{key:"status",label:"Status"},
+        {key:"actions",label:"Actions"}
+      ], { rowClass: (r) => (r._archived ? "row-archived" : ""), pageSize: 15, sortValue: { date: r => r.dateKey } });
+    }
+    const count = document.getElementById("pe-count");
+    if (count) count.textContent = "Showing " + rows.length + " of " + allEntries.length + " entries";
+  }
+
+  // See challans.html: the FY checkbox is only ever changed by the user, and
+  // the choice persists across navigation instead of resetting itself.
+  const PE_FILTER_KEY = "production-filters";
+
+  function saveProductionFilters() {
+    window.UI.saveFilterState(PE_FILTER_KEY, {
+      fyOnly: document.getElementById("pe-fy-only").checked,
+      from: document.getElementById("pe-from").value,
+      to: document.getElementById("pe-to").value,
+    });
+  }
+
+  function restoreProductionFilters() {
+    const s = window.UI.loadFilterState(PE_FILTER_KEY);
+    if (!s) return;
+    const box = document.getElementById("pe-fy-only");
+    if (box && typeof s.fyOnly === "boolean") box.checked = s.fyOnly;
+    if (typeof s.from === "string") document.getElementById("pe-from").value = s.from;
+    if (typeof s.to === "string") document.getElementById("pe-to").value = s.to;
+    // Saved state can carry last FY's dates; from > to hides every row.
+    if (box && box.checked) window.UI.dropInvertedRange("pe-from", "pe-to");
+  }
+
+  // Clean sweep of the production-entry filters (search, dates, FY toggle).
+  // Saved filter state is rewritten blank so a reload stays clean too.
+  window.resetProductionFilters = function () {
+    document.getElementById("pe-search").value = "";
+    document.getElementById("pe-from").value = "";
+    document.getElementById("pe-to").value = "";
+    const fy = document.getElementById("pe-fy-only");
+    if (fy) fy.checked = false;
+    saveProductionFilters();
+    window.filterProduction();
+  };
+
+  // Ticking "Current FY only" is a preset: FY start, no upper bound. Leaving a
+  // stale `to` behind made from > to, which filtered every row out.
+  window.togglePeFy = function () {
+    const box = document.getElementById("pe-fy-only");
+    if (box.checked) window.UI.applyFyStart("pe-from", "pe-to");
+    else document.getElementById("pe-from").value = "";
+    saveProductionFilters();
+    window.filterProduction();
+  };
+
+  window.peDateChanged = function () {
+    saveProductionFilters();
+    window.filterProduction();
+  };
+
+  window.filterProduction = function () {
+    const q = (document.getElementById("pe-search").value || "").trim().toLowerCase();
+    const from = document.getElementById("pe-from").value;
+    const to = document.getElementById("pe-to").value;
+    let list = allEntries.filter(e => window.UI.inDateRange(e.production_date, from, to));
+    if (!q) { renderProductionTable(list); return; }
+    // A multi-size entry names its first size in packaging_size_name; the rest
+    // live in outputs, so searching "250g" missed every non-first size.
+    const filtered = list.filter(e => [e.production_number, e.product_name, e.packaging_size_name, e.status, e.target_quantity]
+      .concat((e.outputs || []).map(o => o && o.packaging_size_name))
+      .map(v => String(v == null ? "" : v).toLowerCase()).some(v => v.includes(q)));
+    renderProductionTable(filtered);
+  };
+
+  async function loadEntries() {
+    try {
+      const data = await window.UI.api("/production/entries" + (document.getElementById("pe-show-archived").checked ? "?include_archived=true" : ""));
+      allEntries = data || [];
+      const q = document.getElementById("pe-search");
+      window.filterProduction();
+    } catch (e) {
+      console.error("Production", e);
+      document.getElementById("pe-table").innerHTML = "<p>Failed to load.</p>";
+    }
+  }
+
+  // Every existing product is always listed above; the trailing option lets a
+  // brand-new name be created inline without leaving this form.
+  function renderProductionProductOptions(selectedId) {
+    const sel = document.getElementById("pe-product");
+    // Keep whatever is picked: this also runs from a background refresh, and
+    // resetting to "Select product…" would wipe a fast pick.
+    const keep = selectedId ? String(selectedId) : sel.value;
+    sel.innerHTML = '<option value="">Select product…</option>' +
+      window.UI.sortByName(allProducts).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join("") +
+      '<option value="__new__">+ Add new product…</option>';
+    if (keep && [...sel.options].some(o => o.value === keep)) sel.value = keep;
+  }
+
+  async function loadProducts() {
+    try {
+      allProducts = await window.UI.api("/products") || [];
+      renderProductionProductOptions();
+      if (window.UI.bindSizeWeightAuto) {
+        window.UI.bindSizeWeightAuto(document.getElementById("pe-qa-size"), document.getElementById("pe-qa-weight"));
+      }
+      if (window.UI.fixLooseWeight) {
+        window.UI.fixLooseWeight(document.getElementById("pe-qa-size"), document.getElementById("pe-qa-weight"));
+      }
+      const sel = document.getElementById("pe-product");
+      if (window.UI.quickSelect) window.UI.quickSelect(sel, "Type product…");
+      sel.onchange = () => {
+        if (sel.value === "__new__") {
+          document.getElementById("pe-quickadd").style.display = "";
+          document.getElementById("pe-qa-name").focus();
+          return;
+        }
+        window.cancelQuickAddProduct(true);
+        refreshStageRows(); refreshFormulationGuide();
+      };
+      refreshStageRows();
+    } catch (e) { console.error("Products", e); }
+    try {
+      allMaterials = await window.UI.api("/raw-materials") || [];
+      // Rows added before /raw-materials resolved would keep no materials:
+      // refill any open rows, keeping picks.
+      try {
+        const opts = window.UI.sortByName(allMaterials).map(m =>
+          `<option value="${m.id}">${esc(m.name)} (stock: ${esc(window.UI.qty2(m.current_stock != null ? m.current_stock : 0))} ${esc(m.unit || "kg")})</option>`).join("");
+        document.querySelectorAll(".pe-mat").forEach(s => {
+          const cur = s.value ? s.value : "";
+          s.innerHTML = '<option value="">Select…</option>' + opts;
+          if (cur) s.value = cur;
+        });
+      } catch (e) {}
+    } catch (e) { console.error("Materials", e); }
+  }
+
+  /* Stages come from the product's own workflow (spec 6: a product may skip
+     stages). Cached per product because this runs on every dropdown change.
+     A product with no saved workflow returns the full default sequence, so
+     this is identical to the old hardcoded list until someone configures it. */
+  const workflowCache = {};
+  const FALLBACK_STAGES = ["roasting", "grinding", "mixing", "packaging"];
+
+  /* Called from the Products page after a workflow is saved, so the next
+     production entry for that product uses the new stages rather than a
+     value cached earlier in this session. */
+  window.productionWorkflowInvalidated = function (productId) {
+    if (productId) delete workflowCache[productId];
+  };
+
+  async function workflowFor(productId) {
+    if (!productId) return FALLBACK_STAGES;
+    if (workflowCache[productId]) return workflowCache[productId];
+    let stages = FALLBACK_STAGES;
+    try {
+      const d = await window.UI.api("/products/" + productId + "/workflow");
+      if (d && Array.isArray(d.stages) && d.stages.length) stages = d.stages;
+    } catch (e) {
+      console.warn("workflow lookup failed, using the default stages", e);
+    }
+    workflowCache[productId] = stages;
+    return stages;
+  }
+
+  function refreshStageRows() {
+    const pid = document.getElementById("pe-product").value;
+    const wrap = document.getElementById("pe-stages");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    if (!pid) {
+      const hint = document.createElement("p");
+      hint.style.cssText = "font-size:12px; color:var(--color-text-muted); margin:0;";
+      hint.textContent = "Choose a product to see its production stages.";
+      wrap.appendChild(hint);
+      return;
+    }
+    workflowFor(pid).then(stages => {
+      // The form may have been reset or the product changed while awaiting.
+      if (document.getElementById("pe-product").value !== pid) return;
+      wrap.innerHTML = "";
+      stages.forEach(s => addStageRow(s, stages));
+      updateStageLabel(stages);
+      // The packaging output depends on the pack sizes, so fill it once the
+      // rows exist (a product with no packaging stage simply gets nothing).
+      // refreshDerived also seeds the first stage's input from the materials
+      // already entered and re-runs the chain down to the summary.
+      refreshDerived();
+    });
+  }
+
+  function updateStageLabel(stages) {
+    const el = document.getElementById("pe-stages-label");
+    if (!el) return;
+    const names = (stages || []).map(s => s[0].toUpperCase() + s.slice(1)).join(", ");
+    el.textContent = "Stages for this product" + (names ? " (" + names + ")" : "");
+    el.title = "Set per product on the Products page";
+  }
+
+  // One batch may pack several sizes from the same bulk output. Each row
+  // is one size + packets; the server splits the stock postings per row.
+  function activeSizesFor(pid) {
+    const prod = allProducts.find(p => String(p.id) === String(pid));
+    // Removed pack sizes stay out of the picker (server refuses them too).
+    // Used only by the Pack dialog - the entry form records no sizes (pack-later).
+    return ((prod && prod.packaging_sizes) || []).filter(s => s.is_active !== false);
+  }
+
+  // What the batch weighs going in: the raw materials weighed out of the
+  // store. Wrapper rolls are packaging material - they are counted on the
+  // packaging stage - so they never enter this total.
+  function materialTotalKg() {
+    let total = 0;
+    document.querySelectorAll(".pe-mat-row").forEach(r => {
+      total += parseFloat(r.querySelector(".pe-mat-qty").value) || 0;
+    });
+    return Math.round(total * 1000) / 1000;
+  }
+
+  // A stage's input is the previous stage's output - the same powder weighed
+  // twice - and the first stage's input is what came out of the store. Filling
+  // them means the figure is typed once instead of four times, and cannot be
+  // typed wrong on the way down. A hand-typed number still wins: typing in a
+  // box sets data-auto="0" on it (see the row templates).
+  //
+  // Guarded because recalculating a row that was just refilled calls back into
+  // here through calcRowWastage; the inner pass would only repeat the same
+  // writes.
+  let syncingStageInputs = false;
+  function syncStageInputs() {
+    if (syncingStageInputs) return;
+    syncingStageInputs = true;
+    try {
+      const rows = Array.from(document.querySelectorAll(".pe-stage-row"));
+      let prevOut = null;
+      rows.forEach(row => {
+        const inEl = row.querySelector(".pe-in");
+        if (!inEl) return;
+        if (inEl.dataset.auto !== "0") {
+          const value = prevOut === null ? materialTotalKg() : prevOut;
+          if (String(inEl.value) !== String(value)) {
+            inEl.value = value;
+            calcRowWastage(inEl);
+          }
+        }
+        prevOut = parseFloat(row.querySelector(".pe-out").value) || 0;
+      });
+    } finally {
+      syncingStageInputs = false;
+    }
+  }
+
+  // Everything downstream of a change: the stage chain and the batch summary.
+  // (Pack sizes and wrappers are recorded at pack time now, not here.)
+  function refreshDerived() {
+    syncStageInputs();
+    renderBatchSummary();
+  }
+  // Inline handlers (material rows, "+ Add Stage") cannot see a page-local
+  // function, so they call through this.
+  window.refreshProductionDerived = refreshDerived;
+
+
+  function firstStageInputKg() {
+    const row = document.querySelector(".pe-stage-row");
+    if (!row) return 0;
+    return parseFloat(row.querySelector(".pe-in").value) || 0;
+  }
+
+
+  // Live "what am I about to save" panel for the Part-1 batch: what came out
+  // of the store, what the last stage produced, and how that sits against the
+  // target. Packing (sizes, packets, wrappers) happens on the Pack dialog.
+  window.renderBatchSummary = function () {
+    const box = document.getElementById("pe-summary-body");
+    if (!box) return;
+    const line = (label, value, note) =>
+      `<div style="display:flex; gap:10px; padding:2px 0; align-items:baseline;">` +
+      `<span style="min-width:120px; color:var(--color-text-muted);">${label}</span>` +
+      `<span style="min-width:92px; font-weight:600;">${value}</span>` +
+      `<span style="font-size:12px; color:var(--color-text-muted);">${note || ""}</span></div>`;
+
+    const stageRows = Array.from(document.querySelectorAll(".pe-stage-row"));
+    const powderIn = firstStageInputKg() || materialTotalKg();
+    const bulkOut = stageRows.length
+      ? (parseFloat(stageRows[stageRows.length - 1].querySelector(".pe-out").value) || 0)
+      : 0;
+    const target = parseFloat((document.getElementById("pe-target") || {}).value) || 0;
+    const rows = [];
+
+    rows.push(line("Raw Material In", window.UI.qty2(powderIn) + " kg", "materials weighed out"));
+    // The same raw-material lines the Pack dialog shows: each material, what
+    // this batch takes, and what its stock becomes — visible before Save.
+    document.querySelectorAll(".pe-mat-row").forEach(r => {
+      const sel = r.querySelector(".pe-mat");
+      const qty = parseFloat(r.querySelector(".pe-mat-qty").value) || 0;
+      if (!sel || !sel.value || !(qty > 0)) return;
+      const mat = (allMaterials || []).find(m => String(m.id) === String(sel.value));
+      if (!mat) return;
+      const stock = parseFloat(mat.current_stock || 0);
+      const after = Math.round((stock - qty) * 1000) / 1000;
+      const note = after < 0
+        ? "stock " + window.UI.qty2(stock) + " kg → short " + window.UI.qty2(-after) + " kg"
+        : "stock " + window.UI.qty2(stock) + " kg → after " + window.UI.qty2(after) + " kg";
+      rows.push(line("Raw material", esc(mat.name) + " (" + window.UI.qty2(qty) + " kg)", note));
+    });
+    if (stageRows.length) {
+      rows.push(line("Bulk output", window.UI.qty2(bulkOut) + " kg", "last stage output"));
+      if (powderIn > 0) {
+        const loss = Math.round((powderIn - bulkOut) * 1000) / 1000;
+        const pct = Math.round((loss / powderIn) * 10000) / 100;
+        const note = loss < 0
+          ? "output exceeds powder in - check the stage rows"
+          : pct + "% of powder in";
+        rows.push(line("Process loss", window.UI.qty2(loss) + " kg", note));
+      }
+    }
+    if (target > 0) {
+      const diff = Math.round((bulkOut - target) * 1000) / 1000;
+      const note = diff === 0
+        ? "on target"
+        : (diff > 0 ? ("+" + window.UI.qty2(diff) + " kg over target") : (window.UI.qty2(-diff) + " kg short of target"));
+      rows.push(line("Target", window.UI.qty2(target) + " kg", note));
+    }
+
+    box.innerHTML = rows.join("");
+  };
+
+window.cancelQuickAddProduct = function (silent) {
+    const box = document.getElementById("pe-quickadd");
+    if (box) box.style.display = "none";
+    ["pe-qa-name", "pe-qa-size", "pe-qa-weight"].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = "";
+    });
+    if (!silent) {
+      const sel = document.getElementById("pe-product");
+      if (sel && sel.value === "__new__") {
+        sel.value = "";
+        refreshStageRows();
+      }
+    }
+  };
+
+  window.saveQuickAddProduct = async function () {
+    const msg = document.getElementById("pe-msg");
+    // Every write sets the colour too: a leftover green/red from the previous
+    // save made a plain validation error look like a success or a failure.
+    const fail = (t) => { msg.textContent = t; msg.style.color = "var(--color-danger)"; };
+    const name = (document.getElementById("pe-qa-name").value || "").trim();
+    const size = (document.getElementById("pe-qa-size").value || "").trim();
+    const weight = parseFloat(document.getElementById("pe-qa-weight").value) || 0;
+    if (!name) { fail("Type the new product name first."); return; }
+    if (!size) { fail("Give its first pack size (e.g. 100g)."); return; }
+    if (!(weight > 0)) { fail("Weight must be more than 0 kg."); return; }
+    try {
+      const created = await window.UI.api("/products", {
+        method: "POST",
+        body: { name, packaging_sizes: [{ size_name: size, weight_in_kg: weight }] },
+      });
+      allProducts = await window.UI.api("/products") || [];
+      renderProductionProductOptions(created && created.id);
+      window.cancelQuickAddProduct(true);
+      refreshStageRows();
+      msg.textContent = "";
+      if (window.UI) {
+        window.UI.notify(
+          created && created.merged_into_existing
+            ? `Name matched "${created.name}" - the size was added to it.`
+            : `Product "${created && created.name ? created.name : name}" added and selected.`,
+          "success");
+      }
+    } catch (e) {
+      fail((e && e.message) || "Could not add product.");
+    }
+  };
+
+  window.openNewProductionForm = function () {
+    // One working panel at a time: the form closes Details and Pack.
+    document.getElementById("pe-detail-card").style.display = "none";
+    document.getElementById("pe-pack-card").style.display = "none";
+    document.getElementById("new-prod-entry-form").reset();
+    window.cancelQuickAddProduct(true);
+    document.getElementById("pe-date").valueAsDate = new Date();
+    document.getElementById("pe-materials").innerHTML = "";
+    addMaterialRow();
+    document.getElementById("pe-msg").textContent = "";
+    document.getElementById("prod-entry-form").style.display = "block";
+    // Materials are the first block now, so the caret starts there.
+    const firstMat = document.querySelector("#pe-materials .pe-mat");
+    if (firstMat) firstMat.focus();
+    else document.getElementById("pe-product").focus();
+    // Refresh the picker: a product created on the Products page since this
+    // page loaded would otherwise never appear here.
+    loadProducts();
+    // Stages follow the selected product's workflow, not a fixed list.
+    refreshStageRows();
+    refreshFormulationGuide();
+  };
+
+  // The product's saved mix ratio + processing steps, shown while the batch
+  // is recorded so the maker follows the recipe. Read-only guidance: Apply
+  // formulation… (in the materials block above) is what fills the rows.
+  async function refreshFormulationGuide() {
+    const box = document.getElementById("pe-formulation-guide");
+    if (!box) return;
+    const pid = (document.getElementById("pe-product") || {}).value;
+    if (!pid || pid === "__new__") { box.style.display = "none"; box.innerHTML = ""; return; }
+    try {
+      const d = await window.UI.api("/products/" + pid + "/formulation");
+      // The picker can change while the fetch is in flight; a stale response
+      // would paint another product's recipe (and its Apply formulation…).
+      if ((document.getElementById("pe-product") || {}).value !== pid) return;
+      if ((!d.items || !d.items.length) && (!d.steps || !d.steps.length) && !d.help_text) {
+        box.style.display = "none"; box.innerHTML = "";
+        return;
+      }
+      const ratio = (d.items || []).map(it =>
+        esc(it.material_name || ("#" + it.raw_material_id)) + " " + it.percentage + "%").join(" · ");
+      const steps = (d.steps || []).map((s, i) =>
+        `<div>${i + 1}. ${s.stage ? `<strong>${esc(s.stage)}</strong> — ` : ""}${esc(s.instruction)}</div>`).join("");
+      box.innerHTML =
+        (d.help_text ? `<div class="ph-help" style="white-space:pre-wrap; margin-bottom:6px;">📖 ${renderHelpHtml(d.help_text)}</div>` : "") +
+        (ratio ? `<div style="margin-bottom:4px;">⚗️ <strong>Mix:</strong> ${ratio}</div>` : "") +
+        (steps ? `<div>${steps}</div>` : "");
+      box.style.display = "block";
+    } catch (e) {
+      if ((document.getElementById("pe-product") || {}).value !== pid) return;
+      box.style.display = "none"; box.innerHTML = "";
+    }
+  }
+
+  window.cancelProductionForm = function () {
+    document.getElementById("new-prod-entry-form").reset();
+    document.getElementById("pe-msg").textContent = "";
+    document.getElementById("prod-entry-form").style.display = "none";
+  };
+
+  window.addStageRow = function (preset, allowedStages) {
+    const wrap = document.getElementById("pe-stages");
+    const div = document.createElement("div");
+    div.className = "form-row pe-stage-row";
+    div.style.cssText = "align-items:flex-end; margin-bottom:8px;";
+    // The dropdown offers only this product's stages, so an entry cannot record
+    // a stage the product does not use. The backend rejects it too.
+    const stages = (allowedStages && allowedStages.length) ? allowedStages : FALLBACK_STAGES;
+    const opts = stages.map(s => `<option value="${s}"${s === preset ? " selected" : ""}>${s[0].toUpperCase() + s.slice(1)}</option>`).join("");
+    div.innerHTML =
+      `<div class="form-group"><label>Stage</label><select class="pe-stage" onchange="calcRowWastage(this)">${opts}</select></div>` +
+      `<div class="form-group"><label>Input (kg)</label><input class="pe-in" type="number" step="0.001" min="0" value="0" data-auto="1" oninput="this.dataset.auto='0'; calcRowWastage(this)" /></div>` +
+      `<div class="form-group"><label>Output (kg)</label><input class="pe-out" type="number" step="0.001" min="0" value="0" data-auto="1" oninput="this.dataset.auto='0'; calcRowWastage(this)" title="On the packaging stage this fills itself: packets x pack weight + wrapper weight" /></div>` +
+      `<div class="form-group"><label>Wastage % (auto)</label><input class="pe-wast" type="number" step="0.01" min="0" value="0" title="Auto-computed from input/output — editable" /><div class="pe-gain" style="font-size:11px; color:var(--color-success); margin-top:2px; min-height:15px;"></div></div>` +
+      `<div class="form-group" style="max-width:70px;"><label>&nbsp;</label><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('.pe-stage-row').remove()">✕</button></div>`;
+    wrap.appendChild(div);
+  };
+
+  window.calcRowWastage = function (el) {
+    const row = el.closest(".pe-stage-row");
+    if (!row) return;
+    const inQty = parseFloat(row.querySelector(".pe-in").value) || 0;
+    const outQty = parseFloat(row.querySelector(".pe-out").value) || 0;
+    const stage = (row.querySelector(".pe-stage") || {}).value || "";
+    const wast = inQty > 0 ? ((inQty - outQty) / inQty * 100) : 0;
+    row.querySelector(".pe-wast").value = (Math.round(Math.max(0, wast) * 100) / 100).toFixed(2);
+    // Packed output may legitimately exceed its input: the wrapper adds
+    // weight. That surplus is stored as packing gain (packaging stages
+    // only), never as negative wastage.
+    const gainEl = row.querySelector(".pe-gain");
+    if (gainEl) {
+      // Only a real surplus: with no input yet the auto-filled output is the
+      // whole batch, and calling that "gain" would read as a mistake.
+      const gain = (stage === "packaging" && inQty > 0 && outQty > inQty) ? (outQty - inQty) : 0;
+      gainEl.textContent = gain > 0 ? ("Packing gain +" + window.UI.qty2(gain) + " kg (wrapper)") : "";
+    }
+    renderBatchSummary();
+    // Editing an earlier stage moves everything below it: the next stage's
+    // input is this stage's output. syncStageInputs is re-entrancy guarded,
+    // so the recalculated rows cannot call their way back up here.
+    if (stage !== "packaging") {
+      syncStageInputs();
+    }
+  };
+
+  window.addMaterialRow = function () {
+    const wrap = document.getElementById("pe-materials");
+    const div = document.createElement("div");
+    div.className = "form-row pe-mat-row";
+    div.style.cssText = "align-items:flex-end; margin-bottom:8px;";
+    const opts = window.UI.sortByName(allMaterials).map(m =>
+      `<option value="${m.id}">${esc(m.name)} (stock: ${esc(window.UI.qty2(m.current_stock != null ? m.current_stock : 0))} ${esc(m.unit || "kg")})</option>`).join("");
+    div.innerHTML =
+      `<div class="form-group" style="flex:2; min-width:200px;"><label>Raw Material</label><select class="pe-mat" required><option value="">Select…</option>${opts}</select></div>` +
+      `<div class="form-group"><label>Qty (kg)</label><input class="pe-mat-qty" type="number" step="0.001" min="0" value="0" oninput="refreshProductionDerived()" /></div>` +
+      `<div class="form-group" style="max-width:70px;"><label>&nbsp;</label><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('.pe-mat-row').remove(); refreshProductionDerived()">✕</button></div>`;
+    wrap.appendChild(div);
+    const matSel = div.querySelector(".pe-mat");
+    if (window.UI.quickSelect) window.UI.quickSelect(matSel, "Type material…");
+    // The first stage's input follows this total, so a new/removed row moves
+    // the whole chain down to the batch summary.
+    refreshDerived();
+  };
+
+  // Fill the consumed-material rows from the product's saved mix ratio,
+  // scaled to the target qty (50 kg at 40% -> 20 kg). Rows stay editable
+  // afterwards; the ratio itself never moves stock.
+  window.applyFormulation = async function () {
+    const msg = document.getElementById("pe-msg");
+    const pid = (document.getElementById("pe-product") || {}).value;
+    if (!pid) {
+      msg.textContent = "Select a product first.";
+      msg.style.color = "var(--color-danger)";
+      return;
+    }
+    let d;
+    try {
+      d = await window.UI.api("/products/" + pid + "/formulation");
+    } catch (e) {
+      msg.textContent = e.message || "Could not load formulation.";
+      msg.style.color = "var(--color-danger)";
+      return;
+    }
+    if (!d.items || !d.items.length) {
+      window.UI.infoDialog("No formulation",
+        (d.product_name || "This product") + " has no mix ratio saved yet. " +
+        "Open Inventory, edit the product, and add its ingredients first.");
+      return;
+    }
+    const target = parseFloat(document.getElementById("pe-target").value) || 0;
+    if (!(target > 0)) {
+      msg.textContent = "Enter Target Qty first — the ratio scales to it.";
+      msg.style.color = "var(--color-danger)";
+      return;
+    }
+    if (!confirm(
+      "Fill " + d.items.length + " material(s) from " + (d.product_name || "this product") +
+      "'s formulation for " + target + " kg?\n\nExisting material rows will be replaced.")) {
+      return;
+    }
+    document.getElementById("pe-materials").innerHTML = "";
+    d.items.forEach(it => {
+      window.addMaterialRow();
+      const rows = document.querySelectorAll("#pe-materials .pe-mat-row");
+      const row = rows[rows.length - 1];
+      row.querySelector(".pe-mat").value = it.raw_material_id;
+      row.querySelector(".pe-mat-qty").value =
+        window.UI.qty2(target * parseFloat(it.percentage) / 100);
+    });
+    msg.textContent = "Formulation applied for " + target + " kg (≈ ₹ " +
+      (parseFloat(d.estimated_cost_per_kg || 0) * target).toFixed(2) + " material cost).";
+    msg.style.color = "var(--color-success)";
+    // The filled rows are the batch's input weight, so the stage chain follows.
+    refreshDerived();
+  };
+
+  // Reverse of applyFormulation: with exactly one material picked, name the
+  // product it becomes (Turmeric -> Turmeric Powder). A saved single-material
+  // ratio wins; otherwise the product name has to mention the material. Blends
+  // and manual product choices are never overwritten.
+  const formulationCache = {};
+  let autoPickedProductId = null;
+
+  function formulationFor(productId) {
+    if (!formulationCache[productId]) {
+      formulationCache[productId] = window.UI.api(
+        "/products/" + productId + "/formulation").catch(() => null);
+    }
+    return formulationCache[productId];
+  }
+
+  function chosenMaterialIds() {
+    return Array.from(document.querySelectorAll("#pe-materials .pe-mat-row"))
+      .map(r => (r.querySelector(".pe-mat") || {}).value)
+      .filter(Boolean);
+  }
+
+  async function autoPickProductFromMaterial() {
+    const chosen = chosenMaterialIds();
+    if (chosen.length !== 1) return;
+    const sel = document.getElementById("pe-product");
+    if (sel.value && sel.value !== autoPickedProductId) return;
+    const matId = parseInt(chosen[0], 10);
+
+    const formulations = await Promise.all(allProducts.map(p => formulationFor(p.id)));
+    // Rows and product may have moved while the ratio fetches were in flight.
+    const still = chosenMaterialIds();
+    if (still.length !== 1 || parseInt(still[0], 10) !== matId) return;
+    if (sel.value && sel.value !== autoPickedProductId) return;
+
+    const hits = allProducts.filter((p, i) => {
+      const items = (formulations[i] && formulations[i].items) || [];
+      return items.length === 1 && Number(items[0].raw_material_id) === matId;
+    });
+    if (!hits.length) {
+      const mat = allMaterials.find(m => Number(m.id) === matId);
+      const needle = String((mat && mat.name) || "").trim().toLowerCase();
+      if (needle) {
+        hits.push(...allProducts.filter(p =>
+          String(p.name || "").toLowerCase().includes(needle)));
+      }
+    }
+
+    const msg = document.getElementById("pe-msg");
+    if (hits.length === 1) {
+      sel.value = String(hits[0].id);
+      autoPickedProductId = sel.value;
+      sel.dispatchEvent(new Event("change"));
+      msg.textContent = "Product set to " + hits[0].name +
+        " from the selected material — change it if needed.";
+      msg.style.color = "var(--color-text-muted)";
+    } else if (hits.length > 1) {
+      msg.textContent = "Several products use this material: " +
+        hits.map(p => p.name).join(", ") + " — pick one above.";
+      msg.style.color = "var(--color-text-muted)";
+    }
+  }
+
+  window.saveProduction = async function (event) {
+    if (event) event.preventDefault();
+    const __release = window.UI.submitGuard(event);
+    if (!__release) return;
+    const msg = document.getElementById("pe-msg");
+    const stages = [];
+    document.querySelectorAll(".pe-stage-row").forEach(r => {
+      stages.push({
+        stage: r.querySelector(".pe-stage").value,
+        input_quantity: parseFloat(r.querySelector(".pe-in").value) || 0,
+        output_quantity: parseFloat(r.querySelector(".pe-out").value) || 0,
+        wastage_percentage: parseFloat(r.querySelector(".pe-wast").value) || 0,
+      });
+    });
+    // Consumption is keyed by material, so two rows for the same material
+    // can never post twice.
+    const consumedById = {};
+    function addConsumed(id, qty) {
+      if (!id || !(qty > 0)) return;
+      consumedById[id] = Math.round(((consumedById[id] || 0) + qty) * 1000) / 1000;
+    }
+    document.querySelectorAll(".pe-mat-row").forEach(r => {
+      const matId = r.querySelector(".pe-mat").value;
+      const qty = parseFloat(r.querySelector(".pe-mat-qty").value) || 0;
+      if (matId) addConsumed(parseInt(matId, 10), qty);
+    });
+    const consumed = Object.keys(consumedById).map(id => ({
+      raw_material_id: parseInt(id, 10),
+      quantity: consumedById[id],
+    }));
+    // Part 1 of the two-step flow: the batch is saved unpacked (bulk kg
+    // only). Sizes, packets and wrapper rolls are recorded at pack time via
+    // the Pack dialog, and wrapper stock is deducted there.
+    const outputs = [];
+    const bulkKg = stages.length
+      ? (stages[stages.length - 1].output_quantity || 0)
+      : materialTotalKg();
+    const payload = {
+      product_id: parseInt(document.getElementById("pe-product").value),
+      packaging_size_id: null,
+      outputs: outputs,
+      production_date: document.getElementById("pe-date").value,
+      target_quantity: parseFloat(document.getElementById("pe-target").value) || 0,
+      notes: document.getElementById("pe-notes").value,
+      stages: stages,
+      consumed_materials: consumed,
+      actual_output: bulkKg,
+    };
+    if (!payload.product_id) {
+      msg.textContent = "Select a product first.";
+      msg.style.color = "var(--color-danger)";
+      __release();
+      return;
+    }
+    try {
+      const res = await fetch("/production/entry", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+      // #pe-msg is hidden with the form, so report through a toast.
+      window.UI.notify(
+        "Batch " + (data.production_number || "") + " saved (stock updated). Press Pack on its row when it is packed.",
+        "success");
+      document.getElementById("prod-entry-form").style.display = "none";
+      document.getElementById("new-prod-entry-form").reset();
+      loadEntries();
+      __release();
+    } catch (e) {
+      msg.textContent = (e.message || "Error");
+      msg.style.color = "var(--color-danger)";
+      __release();
+    }
+  };
+
+  // Two quick View clicks race: the slower response used to overwrite the
+  // newer entry's detail card. Only the latest request may paint.
+  let detailToken = 0;
+
+  window.viewProduction = async function (id) {
+    const token = ++detailToken;
+    const card = document.getElementById("pe-detail-card");
+    const body = document.getElementById("pe-detail-body");
+    // One working panel at a time: opening Details closes the entry form and
+    // the Pack dialog instead of stacking all three on one page.
+    document.getElementById("prod-entry-form").style.display = "none";
+    document.getElementById("pe-pack-card").style.display = "none";
+    try {
+      const d = await window.UI.api("/production/entries/" + id);
+      if (token !== detailToken) return;
+      let stagesHtml = "<p>No stages recorded.</p>";
+      if (d.stage_entries && d.stage_entries.length) {
+        stagesHtml = "<table><thead><tr><th>#</th><th>Stage</th><th>Input (kg)</th><th>Output (kg)</th><th>Loss (kg)</th><th>Loss %</th><th>Gain (kg)</th></tr></thead><tbody>" +
+          d.stage_entries.map(s => `<tr><td>${esc(s.sequence)}</td><td>${esc(s.stage)}</td><td>${esc(s.input_quantity)}</td><td>${esc(s.output_quantity)}</td><td>${esc(s.wastage_quantity)}</td><td>${esc(s.wastage_percentage)}</td><td>${esc(s.packing_gain_kg || 0)}</td></tr>`).join("") +
+          "</tbody></table>";
+      }
+      let matHtml = "";
+      try {
+        const mats = await window.UI.api("/production/entries/" + id + "/materials");
+        if (mats && mats.length) {
+          matHtml = "<h4 style='font-size:14px; margin:12px 0 6px;'>Raw Materials Consumed</h4><div class='table-wrap'><table><thead><tr><th>Material</th><th>Qty</th><th>Unit</th></tr></thead><tbody>" +
+            mats.map(m => `<tr><td>${esc(m.material_name || ("#" + m.raw_material_id))}</td><td>${window.UI.trimNum(m.quantity)}</td><td>${esc(m.unit || "kg")}</td></tr>`).join("") +
+            "</tbody></table></div>";
+        }
+      } catch (e) { console.error("Materials", e); }
+      if (token !== detailToken) return;
+      body.innerHTML =
+        "<div style='display:grid; grid-template-columns: 160px 1fr; gap:4px 12px; margin-bottom:12px;'>" +
+        "<strong>Number</strong><span>" + esc(d.production_number) + "</span>" +
+        "<strong>Date</strong><span>" + window.UI.dateWithTime(d.production_date, d.created_at) + "</span>" +
+        "<strong>Product</strong><span>" + esc(d.product_name || "—") + "</span>" +
+        "<strong>Packaging</strong><span>" + outputsSummary(d) + "</span>" +
+        "<strong>Target</strong><span>" + fmtNum(d.target_quantity, 2) + " kg</span>" +
+        "<strong>Actual</strong><span>" + (d.actual_packets != null ? fmtNum(d.actual_packets, 0) : "—") + " packets (" + fmtNum(d.actual_output, 2) + " kg)</span>" +
+        "<strong>Status</strong><span>" + esc(d.status) + "</span>" +
+        "</div><div class='table-wrap'>" + stagesHtml + "</div>" + matHtml;
+      card.style.display = "block";
+      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      renderProductionActions(d);
+    } catch (e) {
+      if (token !== detailToken) return;
+      body.innerHTML = "<p style='color:var(--color-danger)'>Could not load details: " + esc(e.message || e) + "</p>";
+      card.style.display = "block";
+      document.getElementById("pe-detail-actions").innerHTML = "";
+    }
+  };
+
+  function renderProductionActions(d) {
+    const box = document.getElementById("pe-detail-actions");
+    const st = String(d.status || "").toLowerCase();
+    let html = "";
+    if (d.is_archived) {
+      box.innerHTML = "<span class=\"badge badge-archived\">Archived · read-only</span>";
+      return;
+    }
+    if (st === "draft") {
+      html += `<button class="btn btn-sm btn-primary" data-approve onclick="setProductionStatus(${d.id}, 'in_progress')">Start Production</button>`;
+    }
+    if (st === "draft" || st === "in_progress") {
+      html += `<button class="btn btn-sm btn-primary" data-approve onclick="setProductionStatus(${d.id}, 'completed')">Mark Complete</button>`;
+      html += `<button class="btn btn-sm btn-danger" data-approve onclick="setProductionStatus(${d.id}, 'cancelled')">Cancel Entry</button>`;
+    }
+    if (st === "completed") {
+      html += `<span class="badge badge-success">Completed</span>`;
+    }
+    if (st === "cancelled") {
+      // Cancelling is reversible: the stock this batch posted and the raw
+      // material it used stay in the ledger either way, so reopening only
+      // clears the label.
+      html += `<span class="badge badge-danger">Cancelled</span>`;
+      html += `<button class="btn btn-sm btn-secondary" data-approve onclick="setProductionStatus(${d.id}, 'draft')">Reopen as draft</button>`;
+    }
+    // Stage rows are process records: editable for any live batch (grinding,
+    // roasting, mixing AND the packaging row added at pack time).
+    if (st !== "cancelled" && (d.stage_entries || []).length) {
+      html += `<button class="btn btn-sm btn-secondary" data-approve onclick="editProductionStages(${d.id})">✎ Edit Stages</button>`;
+    }
+    box.innerHTML = html;
+  }
+
+  window.setProductionStatus = async function (id, status) {
+    const labels = { in_progress: "start", completed: "complete", cancelled: "cancel", draft: "reopen" };
+    // Say what the action actually does: cancelling marks the batch only - the
+    // finished stock and the consumed raw material stay in the ledger.
+    const asks = {
+      cancelled: "Cancel this entry? Its finished stock and the raw material it used stay in the ledger - you can reopen it as a draft later.",
+      draft: "Reopen this entry as a draft? Stock is unchanged.",
+    };
+    if (!confirm(asks[status] || `Are you sure you want to ${labels[status] || status} this entry?`)) return;
+    try {
+      const res = await fetch("/production/entries/" + id + "/status", {
+        method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ status: status })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+      window.UI.notify("Entry " + (status === "draft" ? "reopened as draft" : status.replace("_", " ")), "success");
+      loadEntries();
+      viewProduction(id);
+    } catch (e) {
+      window.UI.notify(e.message || "Failed", "error");
+    }
+  };
+
+  // ---- Edit stage rows of a saved batch (Part 1 and the packaging row) ----
+  // Stage rows never move stock, so this only rewrites wastage/gain figures;
+  // the server recomputes them from the corrected input/output.
+  window.editProductionStages = async function (id) {
+    const card = document.getElementById("pe-detail-card");
+    const body = document.getElementById("pe-detail-body");
+    const actions = document.getElementById("pe-detail-actions");
+    document.getElementById("prod-entry-form").style.display = "none";
+    document.getElementById("pe-pack-card").style.display = "none";
+    card.style.display = "block";
+    let d;
+    try {
+      d = await window.UI.api("/production/entries/" + id);
+    } catch (e) {
+      body.innerHTML = "<p style='color:var(--color-danger)'>" + esc(e.message || e) + "</p>";
+      actions.innerHTML = "";
+      return;
+    }
+    let html =
+      "<h4 style='font-size:14px; margin:0 0 6px;'>Edit Stages — " + esc(d.production_number) + "</h4>" +
+      "<p style='font-size:12px; color:var(--color-text-muted); margin:0 0 10px;'>Stage rows are process records — fixing them does not change stock. Wastage % and packing gain are recomputed on save.</p>" +
+      "<table><thead><tr><th>#</th><th>Stage</th><th>Input (kg)</th><th>Output (kg)</th></tr></thead><tbody>";
+    (d.stage_entries || []).forEach(s => {
+      html += `<tr><td>${esc(s.sequence)}</td><td class="pe-es-stage">${esc(s.stage)}</td>` +
+        `<td><input class='pe-es-in' type='number' step='0.001' min='0' value='${esc(s.input_quantity)}' style='width:110px;' /></td>` +
+        `<td><input class='pe-es-out' type='number' step='0.001' min='0' value='${esc(s.output_quantity)}' style='width:110px;' /></td></tr>`;
+    });
+    html += "</tbody></table>";
+    body.innerHTML = html;
+    actions.innerHTML =
+      `<button class="btn btn-sm btn-primary" data-approve onclick="saveProductionStages(${d.id})">Save Stages</button>` +
+      `<button class="btn btn-sm btn-danger-outline" onclick="viewProduction(${d.id})">Cancel</button>`;
+    card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+
+  window.saveProductionStages = async function (id) {
+    const stages = [];
+    document.querySelectorAll("#pe-detail-body tbody tr").forEach(tr => {
+      const stageCell = tr.querySelector(".pe-es-stage");
+      const inEl = tr.querySelector(".pe-es-in");
+      const outEl = tr.querySelector(".pe-es-out");
+      if (!stageCell || !inEl) return;
+      stages.push({
+        stage: stageCell.textContent.trim(),
+        input_quantity: parseFloat(inEl.value) || 0,
+        output_quantity: parseFloat(outEl.value) || 0,
+      });
+    });
+    if (!stages.length) {
+      window.UI.notify("No stage rows to save.", "error");
+      return;
+    }
+    try {
+      const res = await fetch("/production/entries/" + id + "/stages", {
+        method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ stages: stages }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+      window.UI.notify("Stages updated.", "success");
+      loadEntries();
+      viewProduction(id);
+    } catch (e) {
+      window.UI.notify(e.message || "Save failed.", "error");
+    }
+  };
+
+  window.deleteProduction = async function (id) {
+    if (!confirm("Archive this production entry?\n\nThe stock it added and the raw material it consumed stay in the totals for the audit trail.")) return;
+    try {
+      const res = await fetch("/production/entries/" + id, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed");
+      window.UI.notify("Entry archived.", "success");
+      loadEntries();
+    } catch (e) {
+      window.UI.notify("Archive failed.", "error");
+    }
+  };
+
+  window.restoreProduction = async function (id) {
+    try {
+      const res = await fetch("/production/entries/" + id + "/restore", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+      window.UI.notify(
+        data.status === "not archived" ? "That entry was not archived." : "Entry restored.",
+        "success");
+      loadEntries();
+    } catch (e) {
+      window.UI.notify(e.message || "Restore failed.", "error");
+    }
+  };
+
+  // See challans.html: inline onchange handlers resolve in the global scope.
+  window.loadEntries = loadEntries;
+  // Alias so the header Refresh button finds this page's loader by convention.
+  window.loadProduction = loadEntries;
+
+  // ---------- Pack dialog: Part 2 of the two-step flow ----------
+  // The batch was saved unpacked (bulk kg). Here it gets its sizes, packets,
+  // pack date and wrapper rolls; saving posts the finished stock and deducts
+  // the wrapper rolls, and the batch turns completed.
+  // Production summary variable for auto-fill
+    let bulkOutputKg = 0;
+
+    window.openPackDialog = async function (entryId) {
+    packEntryId = entryId;
+    const card = document.getElementById("pe-pack-card");
+    const body = document.getElementById("pe-pack-body");
+    const msg = document.getElementById("pe-pack-msg");
+    // One working panel at a time: Pack closes the entry form and Details.
+    document.getElementById("prod-entry-form").style.display = "none";
+    document.getElementById("pe-detail-card").style.display = "none";
+    msg.textContent = "";
+    msg.style.color = "var(--color-text-muted)";
+    card.style.display = "block";
+    try {
+      const d = await window.UI.api("/production/entries/" + entryId);
+      document.getElementById("pe-pack-number").textContent = d.production_number || "";
+      // Production summary: what went into this batch, straight from the
+      // ledger ("Raw material (Turmeric) — 50 kg") plus each stage's
+      // in → out with its loss, so the person packing can sanity-check
+      // the bulk powder against what was consumed.
+      let sumHtml = "";
+      const sumRows = [];
+      try {
+        const mats = await window.UI.api("/production/entries/" + entryId + "/materials");
+        (mats || []).forEach(m => sumRows.push(
+          "<div style='display:flex; gap:10px; padding:2px 0; align-items:baseline;'>" +
+          "<span style='min-width:120px; color:var(--color-text-muted);'>Raw material</span>" +
+          `<span style='font-weight:600;'>${esc(m.material_name || ("#" + m.raw_material_id))}</span>` +
+          `<span style='font-size:12px; color:var(--color-text-muted);'>(${esc(m.material_name || "")}) ${window.UI.trimNum(m.quantity)} ${esc(m.unit || "kg")} consumed</span>` +
+          "</div>"));
+      } catch (e) { /* summary is best-effort; packing does not depend on it */ }
+      (d.stage_entries || []).forEach(s => {
+        const gain = parseFloat(s.packing_gain_kg || 0);
+        const loss = parseFloat(s.wastage_quantity || 0);
+        const note = gain > 0
+          ? `+${fmtW2(gain)} kg wrapper gain`
+          : (loss > 0 ? `${fmtW2(loss)} kg loss (${window.UI.trimNum(s.wastage_percentage)}%)` : "");
+        sumRows.push(
+          "<div style='display:flex; gap:10px; padding:2px 0; align-items:baseline;'>" +
+          "<span style='min-width:120px; color:var(--color-text-muted);'>" + esc(s.stage || "") + " stage</span>" +
+          `<span style='font-weight:600;'>${fmtW2(s.input_quantity)} kg → ${fmtW2(s.output_quantity)} kg</span>` +
+          (note ? `<span style='font-size:12px; color:var(--color-text-muted);'>${note}</span>` : "") +
+          "</div>");
+      });
+      // Capture bulk output (last stage output) for auto-fill
+      if (d.stage_entries && d.stage_entries.length) {
+        const last = d.stage_entries[d.stage_entries.length - 1];
+        bulkOutputKg = parseFloat(last.output_quantity || 0);
+      }
+      if (sumRows.length) {
+        sumHtml =
+          "<div style='margin-bottom:12px; padding:8px; background:#f8f9fa; border-radius:4px; font-size:13px;'>" +
+          "<div style='font-weight:600; font-size:14px; margin-bottom:6px;'>Production Summary</div>" +
+          sumRows.join("") +
+          "</div>";
+      }
+      const sizes = activeSizesFor(d.product_id);
+      if (!sizes.length) {
+        body.innerHTML = "<p style='color:var(--color-danger);'>No active pack sizes for this product — add them on the Products page first.</p>";
+        document.getElementById("pe-pack-totals").textContent = "";
+        return;
+      }
+      let html = sumHtml;
+      html += "<label style='display:block; margin-bottom:6px;'>Pack date</label>";
+      html += "<div style='display:flex; gap:10px; align-items:flex-end; margin-bottom:10px; flex-wrap:wrap;'>" +
+        "<input id='pe-pack-date' type='date' style='width:220px;' />" +
+        "<button type='button' class='btn btn-secondary btn-sm' onclick='autoFillPackets()' " +
+        "style='height:36px;' title='Fill packets = bulk output ÷ pack weight for each size'>" +
+        "Auto-fill from bulk</button>" +
+        "</div>";
+      html += "<table style='width:100%; border-collapse:collapse; margin-bottom:10px;'><thead><tr>" +
+        "<th style='text-align:center; width:40px;'>Sel</th>" +
+        "<th style='text-align:left;'>Size</th><th style='text-align:right;'>Weight</th><th style='text-align:right;'>Packets</th>" +
+        "<th style='text-align:right;'>Product kg</th><th style='text-align:right;'>Wrapper kg</th><th style='text-align:left; padding-left:16px;'>Roll</th></tr></thead><tbody>";
+      sizes.forEach(s => {
+        const ww = parseFloat(s.wrapper_weight_kg || 0);
+        const mapped = s.wrapper_material_id || "";
+        const mappedName = mapped ? ((allMaterials || []).find(m => String(m.id) === String(mapped)) || {}).name || ("#" + mapped) : "";
+        html += `<tr>
+          <td style='text-align:center;'><input type='checkbox' class='pe-pack-select' data-size='${s.id}' checked /></td>
+          <td>${esc(s.size_name)}</td>
+          <td style='text-align:right;'>${fmtW2(s.weight_in_kg)} kg</td>
+          <td style='text-align:right;'><input class='pe-pack-packets' type='number' step='1' min='0' value='0' data-size='${s.id}' data-ww='${ww}' data-pw='${parseFloat(s.weight_in_kg || 0)}' data-mapped='${mapped}' oninput='updatePackTotals()' style='width:80px;' /></td>
+          <td style='text-align:right;'><span class='pe-pack-prodkg'>0.00</span> kg</td>
+          <td style='text-align:right;'><span class='pe-pack-wrapkg'>0.00</span> kg</td>
+          <td style='padding-left:16px; vertical-align:top;'>${mapped
+            ? `<span style='font-size:12px; color:var(--color-text-muted);'>${esc(mappedName)} (mapped)</span><div class='pe-pack-stock' style='font-size:12px; white-space:nowrap; margin-top:2px;'></div>`
+            : `<select class='pe-pack-roll' onchange='updatePackTotals()'><option value=''>Pick a roll</option>${(allMaterials || []).map(m => {
+                const stk = parseFloat(m.current_stock || 0);
+                return `<option value='${m.id}'>${esc(m.name)} — ${fmtW2(stk)} kg left</option>`;
+              }).join("")}</select><div class='pe-pack-stock' style='font-size:12px; white-space:nowrap; margin-top:2px;'></div>`}</td>
+        </tr>`;
+      });
+      html += "</tbody></table>";
+      // Repeat the summary at the bottom so it stays visible after the
+      // operator has filled in packets for every size.
+      html += sumHtml;
+      body.innerHTML = html;
+      document.getElementById("pe-pack-date").valueAsDate = new Date();
+      updatePackTotals();
+    } catch (e) {
+      msg.textContent = (e.message || "Error");
+      msg.style.color = "var(--color-danger)";
+    }
+  };
+
+  window.closePack = function () {
+    document.getElementById("pe-pack-card").style.display = "none";
+    packEntryId = null;
+    bulkOutputKg = 0;
+  };
+
+  window.updatePackTotals = function () {
+    let prodKg = 0, wrapKg = 0;
+    document.querySelectorAll(".pe-pack-packets").forEach(inp => {
+      const packets = parseFloat(inp.value) || 0;
+      const ww = parseFloat(inp.dataset.ww || 0);
+      const pw = parseFloat(inp.dataset.pw || 0);
+      const row = inp.closest("tr");
+      const rollSel = row.querySelector(".pe-pack-roll");
+      const rollId = (rollSel ? rollSel.value : inp.dataset.mapped) || "";
+      prodKg += packets * pw;
+      if (rollId && ww > 0) wrapKg += packets * ww;
+      const prodEl = row.querySelector(".pe-pack-prodkg");
+      const wrapEl = row.querySelector(".pe-pack-wrapkg");
+      if (prodEl) prodEl.textContent = (packets * pw).toFixed(2);
+      if (wrapEl) wrapEl.textContent = (rollId ? packets * ww : 0).toFixed(2);
+      // Roll stock and the balance after this pack, on mapped and picked
+      // rolls alike — the same check the save repeats server-side.
+      const stockEl = row.querySelector(".pe-pack-stock");
+      if (stockEl) {
+        const mat = (allMaterials || []).find(m => String(m.id) === String(rollId));
+        if (!mat) {
+          stockEl.textContent = "";
+        } else if (!(ww > 0)) {
+          stockEl.textContent = "no wrapper weight on this size";
+          stockEl.style.color = "var(--color-text-muted)";
+        } else {
+          const stock = parseFloat(mat.current_stock || 0);
+          const need = packets * ww;
+          const after = Math.round((stock - need) * 1000) / 1000;
+          stockEl.textContent = "stock " + window.UI.qty2(stock) + " kg → after " + window.UI.qty2(after) + " kg";
+          stockEl.style.color = after < 0 ? "var(--color-danger)" : "var(--color-text-muted)";
+        }
+      }
+    });
+    document.getElementById("pe-pack-totals").textContent =
+      "Totals: " + fmtNum(prodKg, 2) + " kg product + " + fmtNum(wrapKg, 2) + " kg wrapper";
+  };
+
+  // Auto-fill packets from bulk output: packets = bulkOutputKg ÷ weight_per_packet
+  // Only fills rows where the checkbox is checked.
+  window.autoFillPackets = function () {
+    if (!bulkOutputKg || bulkOutputKg <= 0) {
+      const msg = document.getElementById("pe-pack-msg");
+      msg.textContent = "No bulk output available — complete the production stages first.";
+      msg.style.color = "var(--color-danger)";
+      return;
+    }
+    let filled = 0;
+    document.querySelectorAll(".pe-pack-packets").forEach(inp => {
+      const row = inp.closest("tr");
+      const chk = row.querySelector(".pe-pack-select");
+      if (chk && !chk.checked) return; // skip unchecked sizes
+      const pw = parseFloat(inp.dataset.pw || 0);
+      if (pw > 0) {
+        const packets = Math.floor(bulkOutputKg / pw);
+        if (packets > 0) {
+          inp.value = packets;
+          filled++;
+        }
+      }
+    });
+    if (filled) {
+      updatePackTotals();
+      const msg = document.getElementById("pe-pack-msg");
+      msg.textContent = "Auto-filled " + filled + " size(s) from " + fmtNum(bulkOutputKg, 2) + " kg bulk output.";
+      msg.style.color = "var(--color-success)";
+    } else {
+      const msg = document.getElementById("pe-pack-msg");
+      msg.textContent = "Could not auto-fill — check pack weights or select sizes.";
+      msg.style.color = "var(--color-danger)";
+    }
+  };
+
+  window.savePack = async function () {
+    if (!packEntryId) return;
+    const date = document.getElementById("pe-pack-date").value;
+    const msg = document.getElementById("pe-pack-msg");
+    const outputs = [];
+    const mappings = [];
+    let any = false;
+    document.querySelectorAll(".pe-pack-packets").forEach(inp => {
+      const packets = parseFloat(inp.value) || 0;
+      if (!(packets > 0)) return;
+      any = true;
+      const sizeId = parseInt(inp.dataset.size, 10);
+      const rollSel = inp.closest("tr").querySelector(".pe-pack-roll");
+      const rollId = (rollSel ? rollSel.value : inp.dataset.mapped) || "";
+      outputs.push({ packaging_size_id: sizeId, packets: packets });
+      if (rollId) mappings.push({ packaging_size_id: sizeId, raw_material_id: parseInt(rollId, 10) });
+    });
+    if (!any) {
+      msg.textContent = "Enter packets for at least one size.";
+      msg.style.color = "var(--color-danger)";
+      return;
+    }
+    try {
+      const id = packEntryId;
+      const data = await window.UI.api("/production/entries/" + id + "/pack", {
+        method: "POST",
+        body: { packed_date: date, outputs: outputs, wrapper_mappings: mappings },
+      });
+      closePack();
+      window.UI.notify("Batch " + (data.production_number || "") + " packed.", "success");
+      loadEntries();
+      viewProduction(id);
+    } catch (e) {
+      msg.textContent = (e.message || "Error");
+      msg.style.color = "var(--color-danger)";
+    }
+  };
+
+  // A material pick (or removing the row that left one behind) can name the
+  // product; the rows are re-checked after the ratio fetch resolves.
+  const peMaterials = document.getElementById("pe-materials");
+  peMaterials.addEventListener("change", (e) => {
+    if (e.target.classList.contains("pe-mat")) autoPickProductFromMaterial();
+  });
+  peMaterials.addEventListener("click", (e) => {
+    if (e.target.closest(".pe-mat-row button")) {
+      setTimeout(autoPickProductFromMaterial, 0);
+    }
+  });
+
+  restoreProductionFilters();
+  loadProducts();
+  loadEntries();
+  // Searchable dropdown on the table filter (click empty box → everything
+  // the text search matches: entry numbers, product and size names, status).
+  if (window.UI.searchSuggest) {
+    window.UI.searchSuggest(document.getElementById("pe-search"), () => {
+      const out = new Set();
+      (allEntries || []).forEach((e) => {
+        if (e.production_number) out.add(String(e.production_number));
+        if (e.product_name) out.add(String(e.product_name));
+        if (e.packaging_size_name) out.add(String(e.packaging_size_name));
+        if (e.status) out.add(String(e.status).toLowerCase());
+      });
+      return Array.from(out);
+    });
+  }
+  if (window.location.hash.includes("new=1")) window.openNewProductionForm();
+})();
+</script>

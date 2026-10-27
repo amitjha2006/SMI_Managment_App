@@ -1,0 +1,27 @@
+# Live business data and secrets - never commit, never ship in a build.
+data/
+dist/
+build/
+build-release/
+build-release-spec/
+release/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.secret_key
+app.log
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Installed tooling dependencies (config in .opencode/ is tracked)
+.opencode/node_modules/
+
+# Local overrides
+.env

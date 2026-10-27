@@ -1,0 +1,97 @@
+[project]
+name = "smi-masala-factory"
+version = "0.1.0"
+description = "Shresth Masala Industry Management System"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "sqlalchemy>=2.0.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "python-multipart>=0.0.6",
+    "alembic>=1.13.0",
+    "pywebview>=4.4.0",
+    "openpyxl>=3.1.0",
+    "reportlab>=4.0.0",
+    # HarfBuzz shaping: without it ReportLab lays Hindi out unshaped and
+    # conjuncts render as dotted circles.
+    "uharfbuzz>=0.37.0",
+    "Pillow>=10.0.0",
+    "python-dateutil>=2.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.26.0",
+    "ruff>=0.1.0",
+    "pyinstaller>=6.1.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+# The app is a source tree, not an installed package: `backend.*` resolves
+# from the repo root (conftest.py puts it on sys.path at test time).
+src = ["."]
+
+[tool.pytest.ini_options]
+# Anchored at the repo root so `pytest` finds the same suite from anywhere.
+testpaths = ["backend/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+# Fail loudly on a test that only passes because of a leaked state or a
+# swallowed exception. This is a business system: a silently green test is
+# worse than a missing one.
+addopts = "-q --strict-markers --strict-config"
+filterwarnings = [
+    "error::DeprecationWarning:backend.*",
+    "default",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "TID", "ARG", "PTH", "ERA", "PL", "TRY"]
+ignore = ["S101", "S106", "B008", "B009", "B011", "PLW0603", "TRY003"]
+
+[tool.ruff.lint.per-file-ignores]
+# SQLAlchemy overloads `==` on columns to emit SQL (`WHERE is_active = true).
+# Rewriting these as `is True` would compare the column object by identity and
+# silently turn every such filter into WHERE false. The rule is wrong here.
+#
+# The route file below keeps three deliberate patterns (each triaged 2026-10):
+# - PLC0415: heavy third-party (openpyxl) and service imports stay lazy so the
+#   frozen .exe starts fast; everything hoistable was already hoisted.
+# - E501: user-facing error messages are asserted verbatim by tests; wrapping
+#   them would change API text. Wrappable code lines were already wrapped.
+# - PLR0912/0915/0913/0917/0911: route handlers encode multi-branch business
+#   validation with audit context; splitting them would scatter it.
+"backend/main.py" = ["E712", "E501", "PLC0415", "PLR0912", "PLR0915", "PLR0913", "PLR0917", "PLR0911"]
+# Tests assert on literals (status codes, quantities, dates): naming every one
+# would add indirection without meaning. The os.path bootstrap and localized
+# imports are the shared fixture idiom across all test files; fixture-builder
+# helpers take wide parameter lists by construction.
+"backend/tests/*.py" = ["PLR2004", "PTH", "PLC0415", "PLR0913", "PLR0917"]
+# One-shot Windows maintenance scripts: os.path is used consistently within
+# each file, and the build orchestrator is sequential steps, not branchy logic.
+"scripts/*.py" = ["PTH", "PLR0912", "PLR0915"]
+# The System delegate import stays inside the helper so the frozen .exe does
+# not touch pythonnet's System types until the desktop window actually exists.
+"main_window.py" = ["PLC0415"]
+# Single-pass row validators: each row needs its checks in sequence, and the
+# import-guard tests pin the exact behaviour. Splitting would scatter it.
+"backend/app/services/excel_import.py" = ["PLR0912", "PLR0915"]
+"backend/app/services/stock_analysis.py" = ["PLR0912", "PLR0915"]
+# get_dashboard_stats is a multi-branch route handler computing ~15 flat KPI
+# fields from several tables; splitting it would scatter the business logic.
+# Same triage as excel_import.py / stock_analysis.py.
+"backend/app/routes/dashboard.py" = ["PLR0912", "PLR0915"]
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"

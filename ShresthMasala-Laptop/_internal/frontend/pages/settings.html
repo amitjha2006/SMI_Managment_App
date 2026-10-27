@@ -1,0 +1,840 @@
+<!-- Settings -->
+<div class="card">
+  <h2 style="font-size: 18px; font-weight: 600; margin-bottom:16px;">Settings</h2>
+  <h3>System Information</h3>
+  <div id="sys-info" style="font-size:14px; line-height:2;">
+    <p style="color:var(--color-text-muted);">Loading…</p>
+  </div>
+</div>
+
+<div class="card" id="backup-settings-card">
+  <h3>Automatic Backups</h3>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-bottom:12px;">Daily backup while the app is running. Old auto backups beyond the keep count are removed; manual backups are never auto-deleted.</p>
+  <div class="form-row" style="align-items:flex-end; max-width:640px;">
+    <div class="form-group"><label>Enabled</label>
+      <select id="set-auto-enabled"><option value="true">On</option><option value="false">Off</option></select>
+    </div>
+    <div class="form-group"><label>Hour (0–23)</label><input id="set-auto-hour" type="number" min="0" max="23" /></div>
+    <div class="form-group"><label>Keep last N</label><input id="set-keep" type="number" min="1" max="90" /></div>
+    <div class="form-group"><button class="btn btn-primary btn-sm" onclick="saveBackupSettings(event)">Save</button></div>
+  </div>
+  <div class="form-row" style="align-items:flex-end; max-width:640px; margin-top:8px;">
+    <div class="form-group" style="flex:1;"><label>Backup folder (absolute path; empty = default data/backups)</label>
+      <input id="set-folder" placeholder="e.g. D:\MasalaBackups" style="width:100%;" /></div>
+    <div class="form-group"><button class="btn btn-secondary btn-sm" onclick="saveBackupFolder(event)">Save folder</button></div>
+  </div>
+  <div id="set-msg" style="font-size:13px; margin-top:8px; color: var(--color-text-muted);"></div>
+</div>
+
+<div class="card" id="session-settings-card">
+  <h3>Session Lock</h3>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-bottom:12px;">Sign out automatically after inactivity on a shared computer. 0 disables.</p>
+  <div class="form-row" style="align-items:flex-end; max-width:640px;">
+    <div class="form-group"><label>Lock after (minutes, 0–240)</label><input id="set-lock-min" type="number" min="0" max="240" /></div>
+    <div class="form-group"><button class="btn btn-primary btn-sm" onclick="saveSessionSettings(event)">Save</button></div>
+  </div>
+  <div id="sess-msg" style="font-size:13px; margin-top:8px; color: var(--color-text-muted);"></div>
+</div>
+
+<div class="card" id="email-settings-card">
+  <h3>Email Alerts (SMTP)</h3>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-bottom:12px;">For Gmail use an <strong>app password</strong> (Google Account → Security → 2-Step Verification → App passwords), not your login password. Stored only in your local database.</p>
+  <div class="form-row">
+    <div class="form-group"><label>SMTP Host</label><input id="em-host" placeholder="smtp.gmail.com" /></div>
+    <div class="form-group"><label>Port</label><input id="em-port" type="number" value="587" /></div>
+    <div class="form-group"><label>Security</label>
+      <select id="em-sec">
+        <option value="starttls">STARTTLS (port 587)</option>
+        <option value="ssl">SSL (port 465)</option>
+        <option value="none">None (port 25)</option>
+      </select>
+    </div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label>Username</label><input id="em-user" autocomplete="username" /></div>
+    <div class="form-group"><label>Password</label><input id="em-pass" type="password" autocomplete="new-password" placeholder="Unchanged" /></div>
+    <div class="form-group"><label>From Address</label><input id="em-from" placeholder="same as username" /></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label>Alert Recipients (comma separated)</label><input id="em-alert-to" placeholder="owner@example.com" /></div>
+  </div>
+  <div style="display:flex; gap:10px; margin-top:8px; align-items:center;">
+    <button class="btn btn-primary btn-sm" onclick="saveEmailSettings(event)">Save</button>
+    <button class="btn btn-secondary btn-sm" onclick="sendTestEmail()">Send Test Mail</button>
+  </div>
+  <div id="em-msg" style="font-size:13px; margin-top:8px; color: var(--color-text-muted);"></div>
+</div>
+
+<div class="card" id="company-settings-card">
+  <h3>Company Profile</h3>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-bottom:12px;">
+    Printed at the top of every challan. Each challan keeps a private copy of
+    these details from the moment it is created, so correcting a typo here never
+    changes a document you have already handed over. Saving for the first time
+    also fills in the challans created before this profile existed.
+  </p>
+  <div class="form-row">
+    <div class="form-group" style="min-width:280px;">
+      <label for="co-name">Company / legal name</label>
+      <input id="co-name" placeholder="Shresth Masala Industries" />
+    </div>
+    <div class="form-group">
+      <label for="co-gstin">GSTIN</label>
+      <input id="co-gstin" maxlength="15" placeholder="27AABCS1234K1Z5" style="text-transform:uppercase;" />
+    </div>
+  </div>
+  <div class="form-group" style="max-width:640px;">
+    <label for="co-address">Address</label>
+    <textarea id="co-address" rows="2" placeholder="Plot 14, MIDC Industrial Area, Andheri East, Mumbai 400093"></textarea>
+  </div>
+  <div class="form-row">
+    <div class="form-group">
+      <label for="co-phone">Phone</label>
+      <input id="co-phone" placeholder="+91 98765 43210" />
+    </div>
+    <div class="form-group">
+      <label for="co-email">Email</label>
+      <input id="co-email" placeholder="sales@yourcompany.example" />
+    </div>
+  </div>
+  <div class="form-group" style="max-width:640px;">
+    <label for="co-terms">Terms &amp; conditions (print footer)</label>
+    <textarea id="co-terms" rows="2" placeholder="Goods once sold will not be taken back. Interest @18% p.a. on overdue amounts."></textarea>
+    <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:4px;">
+      Appears in the footer of challans and invoices created <em>after</em> you
+      save. Documents already issued keep the wording they were printed with -
+      a footer is part of the document, so rewriting it later would change a
+      copy the customer already holds.
+    </small>
+    <span id="co-terms-note" style="display:block; font-size:11px; margin-top:4px;"></span>
+  </div>
+  <div style="display:flex; gap:8px; align-items:center;">
+    <!-- No data-approve: the company profile is configuration, already
+         admin-only by role, and it is the letterhead printed on every
+         document. data-approve made this button inert (pointer-events: none)
+         while Editor Mode was off, so clicking it silently did nothing and the
+         profile looked unsaveable. -->
+    <button class="btn btn-primary btn-sm" onclick="saveCompanySettings(event)">Save company profile</button>
+    <span id="co-msg" style="font-size:13px; color:var(--color-text-muted);"></span>
+  </div>
+</div>
+
+<div class="card" id="print-footers-card">
+  <h3>Print Footers</h3>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-bottom:12px;">
+    Named terms &amp; conditions blocks for challans and sales invoices. Pick one
+    per challan (company default pre-selected); the wording freezes onto the
+    document at creation, so editing a footer later never rewrites an
+    already-issued document.
+  </p>
+  <div id="footers-table"></div>
+  <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-top:12px;">
+    <div class="form-group" style="margin:0;">
+      <label for="footer-new-name">Name</label>
+      <input id="footer-new-name" placeholder="e.g. Standard" />
+    </div>
+    <div class="form-group" style="margin:0; flex:1; min-width:220px;">
+      <label for="footer-new-body">Terms text</label>
+      <input id="footer-new-body" placeholder="Goods once sold will not be taken back." />
+    </div>
+    <button class="btn btn-primary btn-sm" type="button" data-approve onclick="addFooter()">Add footer</button>
+  </div>
+  <p id="footers-msg" style="font-size:13px; margin-top:8px; color:var(--color-text-muted);"></p>
+</div>
+
+<div class="card" id="sales-invoice-settings-card">
+  <h3>Sales Tax Invoices</h3>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-bottom:12px;">
+    A tax invoice is a <em>separate document</em> from the delivery challan, and it
+    is always raised from a challan so the two can never disagree. GST is taken
+    <em>out of</em> the challan amount rather than added on top, so the invoice
+    total always equals the challan total and nobody is re-billed.
+  </p>
+  <div class="form-row" style="align-items:flex-end; max-width:760px;">
+    <div class="form-group">
+      <label for="si-from">Invoices allowed from</label>
+      <input id="si-from" type="date" />
+      <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
+        Challans dated before this cannot be invoiced.
+      </small>
+    </div>
+    <div class="form-group">
+      <label for="si-prefix">Invoice number prefix</label>
+      <input id="si-prefix" maxlength="8" />
+      <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
+        Numbered as prefix/FY/serial, e.g. INV/26-27/0001.
+      </small>
+    </div>
+    <div class="form-group">
+      <label for="si-supply">Supply type</label>
+      <select id="si-supply">
+        <option value="intra">Intra-state (CGST + SGST)</option>
+        <option value="inter">Inter-state (IGST)</option>
+      </select>
+      <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
+        This factory is registered in Bihar. A customer outside Bihar needs
+        <em>Inter-state</em>, or the tax head will be wrong.
+      </small>
+    </div>
+  </div>
+  <div id="si-warn" style="font-size:12px; margin-bottom:10px;"></div>
+  <div style="display:flex; gap:8px; align-items:center;">
+    <button class="btn btn-primary btn-sm" data-approve onclick="saveSalesInvoiceSettings(event)">Save invoice settings</button>
+    <span id="si-msg" style="font-size:13px; color:var(--color-text-muted);"></span>
+  </div>
+</div>
+
+<div class="card" id="report-settings-card">
+  <h3>Automatic Daily Report Mail</h3>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-bottom:12px;">Sends key figures every day while the app is running. Requires email settings above.</p>
+  <div class="form-row" style="align-items:flex-end; max-width:640px;">
+    <div class="form-group"><label>Enabled</label>
+      <select id="rep-enabled"><option value="true">On</option><option value="false">Off</option></select>
+    </div>
+    <div class="form-group"><label>Hour (0–23)</label><input id="rep-hour" type="number" min="0" max="23" value="8" /></div>
+      <div class="form-group"><label>Repeat</label>
+        <select id="rep-frequency" onchange="syncFrequencyVisibility()"><option value="daily">Daily</option><option value="weekly">Weekly</option></select>
+      </div>
+      <div class="form-group" id="rep-weekday-wrap"><label>Weekday (weekly)</label>
+        <select id="rep-weekday">
+          <option value="0">Monday</option><option value="1">Tuesday</option>
+          <option value="2">Wednesday</option><option value="3">Thursday</option>
+          <option value="4">Friday</option><option value="5">Saturday</option>
+          <option value="6">Sunday</option>
+        </select>
+      </div>
+  </div>
+  <div class="form-row" style="align-items:flex-end;">
+    <div class="form-group" style="flex:1;"><label>Recipients (comma separated)</label><input id="rep-to" placeholder="defaults to alert recipients" /></div>
+    <div class="form-group" style="display:flex; gap:8px; flex:0 0 auto;">
+      <button class="btn btn-primary btn-sm" onclick="saveReportSettings(event)">Save</button>
+      <button class="btn btn-secondary btn-sm" onclick="previewReport()">Preview</button>
+      <button class="btn btn-secondary btn-sm" onclick="sendReportNow()">Send Now</button>
+    </div>
+  </div>
+  <div style="margin-top:10px;">
+    <label style="font-size:13px; font-weight:500; color:var(--color-text-muted);">Include in report:</label>
+    <span style="font-size:12px; margin-left:8px;">
+      <a href="#" onclick="setAllSections(true); return false;">Select all</a>
+      <span style="color:var(--color-text-muted);"> · </span>
+      <a href="#" onclick="setAllSections(false); return false;">Clear</a>
+    </span>
+    <div id="rep-sections" style="display:flex; gap:14px; flex-wrap:wrap; font-size:13px; margin-top:6px;"></div>
+  </div>
+  <pre id="rep-preview" style="display:none; background:#f5f8fc; border:1px solid var(--color-border); border-radius:6px; padding:12px; font-size:12px; white-space:pre-wrap; margin-top:10px; max-height:260px; overflow:auto;"></pre>
+  <div id="rep-msg" style="font-size:13px; margin-top:8px; color: var(--color-text-muted);"></div>
+</div>
+
+<div class="card" id="shares-card">
+  <h3>Shared Dashboard Links</h3>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-bottom:12px;">Public read-only snapshots. Anyone with the link can view — revoke links you no longer need.</p>
+  <div id="shares-table"></div>
+</div>
+
+<script>
+/* Declared first: paintSectionBoxes() runs during init below, so the labels
+   must exist before it. `var`, not `const`: page scripts re-run on every
+   navigation without a full reload, and a re-executed `const` throws
+   "already been declared". */
+var REP_SECTION_LABELS = [
+  ["stock", "Stock summary", "Total raw kg + finished kg"],
+  ["sales", "Sales this month", "Single ₹ total"],
+  ["pending", "Unpaid supplier bills", "Purchase invoices awaiting payment"],
+  ["balances", "Money owed to us / by us", "Customer outstanding + supplier payable"],
+  ["low_stock", "Low-stock items", "Materials and pack sizes below threshold"],
+  ["dues", "Dues follow-up list", "One line per owing customer — can be long"],
+];
+
+(function(){
+  function fmtSize(bytes) {
+    bytes = parseInt(bytes) || 0;
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+  }
+
+  async function loadSysInfo() {
+    try {
+      const d = await window.UI.api("/system/info");
+      const ok = v => `<span style="color: var(--color-success); font-weight: 600;">${v}</span>`;
+      document.getElementById("sys-info").innerHTML =
+        "<div style='display:grid; grid-template-columns: 180px 1fr; gap:4px 12px;'>" +
+        "<strong>Application</strong><span>" + (d.app || "—") + " v" + (d.version || "—") + "</span>" +
+        "<strong>Database</strong><span>" + ok(d.database || "—") + "</span>" +
+        "<strong>Database File</strong><span style='font-family:var(--font-mono); font-size:12px;'>" + (d.database_path || "—") + "</span>" +
+        "<strong>Database Size</strong><span>" + fmtSize(d.database_size) + "</span>" +
+        "<strong>Server</strong><span>" + ok(d.server || "—") + "</span>" +
+        "<strong>Offline Mode</strong><span>" + ok(d.offline_mode || "—") + "</span>" +
+        "</div>";
+    } catch (e) {
+      console.error("System info", e);
+      document.getElementById("sys-info").innerHTML = "<p>Could not load.</p>";
+    }
+  }
+
+  loadSysInfo();
+  loadShares();
+  loadBackupSettings();
+  loadEmailSettings();
+  loadCompanySettings();
+  loadFootersSettings();
+  loadSalesInvoiceSettings();
+  loadSessionSettings();
+  paintSectionBoxes();
+})();
+
+async function loadSalesInvoiceSettings() {
+  const card = document.getElementById("sales-invoice-settings-card");
+  if (!card) return;
+  const me = window.Auth ? window.Auth.getUser() : null;
+  const isAdmin = me && String(me.role) === "admin";
+  if (!isAdmin) {
+    card.querySelectorAll("input, select, button").forEach(el => { el.disabled = true; });
+    card.querySelector("h3").textContent = "Sales Tax Invoices (view only)";
+  }
+  try {
+    const d = await window.UI.api("/settings/sales-invoice");
+    document.getElementById("si-from").value = d.invoice_from_date || "";
+    document.getElementById("si-prefix").value = d.invoice_prefix || "INV";
+    document.getElementById("si-supply").value = d.supply_type || "intra";
+
+    // Spell out what is still blocking invoicing, rather than letting the user
+    // discover it as a refused request later.
+    const warn = document.getElementById("si-warn");
+    const lines = [];
+    if (!d.company_gstin) {
+      lines.push("<span style='color:var(--color-danger)'>" +
+        "No company GSTIN is set, so no valid tax invoice can be issued. " +
+        "Set it in Company Profile above. (Delivery challans do not need it, " +
+        "which is why they were allowed before.)</span>");
+    }
+    const noGst = d.products_without_gst_rate || [];
+    if (noGst.length) {
+      lines.push("<span style='color:var(--color-danger)'>" + noGst.length +
+        " product(s) have no GST rate, and a challan containing one cannot be " +
+        "invoiced: " + noGst.map(p => escShare(p.name)).join(", ") +
+        ". Set the rate on the Products page.</span>");
+    }
+    const noHsn = d.products_without_hsn || [];
+    if (noHsn.length) {
+      lines.push("<span style='color:#a60'>" + noHsn.length +
+        " product(s) have no HSN code. Invoices will be issued with a blank HSN; " +
+        "your customer may need it to claim input credit.</span>");
+    }
+    warn.innerHTML = lines.join("<br>");
+  } catch (e) {
+    console.error("Sales invoice settings", e);
+  }
+}
+
+async function saveSalesInvoiceSettings(event) {
+  const __release = window.UI.submitGuard(event);
+  if (!__release) return;
+  const msg = document.getElementById("si-msg");
+  const body = {
+    invoice_from_date: document.getElementById("si-from").value,
+    invoice_prefix: document.getElementById("si-prefix").value.trim().toUpperCase(),
+    supply_type: document.getElementById("si-supply").value,
+  };
+  try {
+    await window.UI.api("/settings/sales-invoice", { method: "PUT", body });
+    msg.style.color = "var(--color-success)";
+    msg.textContent = "Saved.";
+    loadSalesInvoiceSettings();
+    __release();
+  } catch (e) {
+    msg.style.color = "var(--color-danger)";
+    msg.textContent = e.message || "Could not save";
+    __release();
+  }
+}
+
+async function loadCompanySettings() {
+  const card = document.getElementById("company-settings-card");
+  if (!card) return;
+  const me = window.Auth ? window.Auth.getUser() : null;
+  const isAdmin = me && String(me.role) === "admin";
+  // Reading the profile is allowed for everyone (a Manager may need to print a
+  // challan), but only an Admin can change it.
+  if (!isAdmin) {
+    card.querySelectorAll("input, textarea, button").forEach(el => { el.disabled = true; });
+    card.querySelector("h3").textContent = "Company Profile (view only)";
+  }
+  try {
+    const d = await window.UI.api("/settings/company");
+    document.getElementById("co-name").value = d.name || "";
+    document.getElementById("co-address").value = d.address || "";
+    document.getElementById("co-gstin").value = d.gstin || "";
+    document.getElementById("co-phone").value = d.phone || "";
+    document.getElementById("co-email").value = d.email || "";
+    document.getElementById("co-terms").value = d.terms || "";
+    // Standing reminder of how many existing documents will not pick this up.
+    const stale = d.challans_without_own_terms || 0;
+    const note = document.getElementById("co-terms-note");
+    if (stale) {
+      note.style.color = "var(--color-text-muted)";
+      note.textContent = (d.terms
+        ? `${stale} existing challan${stale === 1 ? "" : "s"} `
+        : `${stale} existing challan${stale === 1 ? "" : "s"} have no terms of their own. `)
+        + "They will keep the footer they were issued with.";
+    } else {
+      note.textContent = "";
+    }
+  } catch (e) {
+    console.error("Company settings", e);
+  }
+}
+
+async function saveCompanySettings(event) {
+  const __release = window.UI.submitGuard(event);
+  if (!__release) return;
+  const msg = document.getElementById("co-msg");
+  const body = {
+    name: document.getElementById("co-name").value,
+    address: document.getElementById("co-address").value,
+    gstin: document.getElementById("co-gstin").value.trim().toUpperCase(),
+    phone: document.getElementById("co-phone").value,
+    email: document.getElementById("co-email").value,
+    terms: document.getElementById("co-terms").value,
+  };
+  try {
+    const d = await window.UI.api("/settings/company", { method: "PUT", body });
+    const n = d.backfilled_challans || 0;
+    const stale = d.challans_without_own_terms || 0;
+    msg.style.color = "var(--color-success)";
+    msg.textContent = "Saved." + (n
+      ? ` ${n} earlier challan${n === 1 ? "" : "s"} filled in with these details.`
+      : " New challans will carry these details.");
+    // Name the boundary explicitly. Without this, printing an older challan
+    // shows no footer and the save looks like it silently failed.
+    if (d.terms_now_set && stale) {
+      msg.textContent += ` ${stale} already-issued challan${stale === 1 ? "" : "s"} `
+        + "keep their original footer, so terms will appear only on documents "
+        + "created from now on.";
+    }
+    await loadCompanySettings();
+    __release();
+  } catch (e) {
+    msg.style.color = "var(--color-danger)";
+    msg.textContent = e.message || "Could not save";
+    __release();
+  }
+}
+
+function escFooter(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+async function loadFootersSettings() {
+  const box = document.getElementById("footers-table");
+  if (!box) return;
+  try {
+    const d = await window.UI.api("/print-footers") || {};
+    const rows = d.footers || [];
+    if (!rows.length) {
+      box.innerHTML = "<p style='font-size:13px; color:var(--color-text-muted);'>No footers yet — add the first one below.</p>";
+      return;
+    }
+    box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Terms text</th><th>Challans</th><th></th></tr></thead><tbody>` +
+      rows.map(f =>
+        `<tr><td>${escFooter(f.name)}` +
+        (f.is_default ? ` <span class="badge badge-success" title="Used when a challan picks Company default">default</span>` : "") +
+        (f.is_active ? "" : ` <span class="badge badge-archived">off</span>`) + `</td>` +
+        `<td style="white-space:normal; min-width:220px;">${escFooter(f.body || "—")}</td>` +
+        `<td class="num">${f.challan_count || 0}</td>` +
+        `<td style="white-space:nowrap;">` +
+        (f.is_default ? "" : `<button class="btn btn-sm btn-tool" type="button" onclick="setDefaultFooter(${f.id})" title="Use for new challans unless they pick another">Default</button> `) +
+        `<button class="btn btn-sm btn-warn" type="button" data-approve onclick="renameFooter(${f.id}, '${escFooter(f.name).replace(/'/g, "\\'")}')">Rename</button> ` +
+        `<button class="btn btn-sm btn-restore" type="button" data-approve onclick="toggleFooter(${f.id}, ${f.is_active ? 0 : 1})">${f.is_active ? "Hide" : "Show"}</button> ` +
+        `<button class="btn btn-sm btn-danger" type="button" data-approve onclick="deleteFooter(${f.id})">Delete</button>` +
+        `</td></tr>`).join("") +
+      `</tbody></table></div>`;
+  } catch (e) {
+    console.error("Footers", e);
+    box.innerHTML = "<p style='color:var(--color-text-muted);'>Could not load footers.</p>";
+  }
+}
+
+function footersMsg(text, isError) {
+  const el = document.getElementById("footers-msg");
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = isError ? "var(--color-danger)" : "var(--color-success)";
+}
+
+async function addFooter() {
+  const name = document.getElementById("footer-new-name").value.trim();
+  const body = document.getElementById("footer-new-body").value.trim();
+  if (!name) { footersMsg("Type a footer name first.", true); return; }
+  if (!body) { footersMsg("Type the terms text first.", true); return; }
+  try {
+    await window.UI.api("/print-footers", { method: "POST", body: { name, body } });
+    document.getElementById("footer-new-name").value = "";
+    document.getElementById("footer-new-body").value = "";
+    footersMsg("Footer added.", false);
+    loadFootersSettings();
+  } catch (e) { footersMsg(e.message || "Could not add footer.", true); }
+}
+
+async function renameFooter(id, currentName) {
+  window.UI.promptDialog("Rename footer", "Footer name", currentName || "", async (name) => {
+    try {
+      await window.UI.api("/print-footers/" + id, { method: "PUT", body: { name } });
+      footersMsg("Footer renamed.", false);
+      loadFootersSettings();
+    } catch (e) { footersMsg(e.message || "Could not rename footer.", true); }
+  });
+}
+
+async function toggleFooter(id, active) {
+  try {
+    await window.UI.api("/print-footers/" + id, { method: "PUT", body: { is_active: !!active } });
+    footersMsg(active ? "Footer shown." : "Footer hidden from pickers.", false);
+    loadFootersSettings();
+  } catch (e) { footersMsg(e.message || "Could not update footer.", true); }
+}
+
+async function setDefaultFooter(id) {
+  try {
+    await window.UI.api("/print-footers/" + id, { method: "PUT", body: { is_default: true } });
+    footersMsg("Default footer updated.", false);
+    loadFootersSettings();
+  } catch (e) { footersMsg(e.message || "Could not set default.", true); }
+}
+
+async function deleteFooter(id) {
+  if (!confirm("Delete this footer? Already-issued challans keep their frozen text.")) return;
+  try {
+    await window.UI.api("/print-footers/" + id, { method: "DELETE" });
+    footersMsg("Footer deleted.", false);
+    loadFootersSettings();
+  } catch (e) { footersMsg(e.message || "Could not delete footer.", true); }
+}
+
+async function loadBackupSettings() {
+  const card = document.getElementById("backup-settings-card");
+  const me = window.Auth ? window.Auth.getUser() : null;
+  if (!me || String(me.role) !== "admin") {
+    if (card) card.style.display = "none";
+    return;
+  }
+  try {
+    const d = await window.UI.api("/settings/backup");
+    document.getElementById("set-auto-enabled").value = d.auto_enabled ? "true" : "false";
+    document.getElementById("set-auto-hour").value = d.auto_hour;
+    document.getElementById("set-keep").value = d.keep_count;
+    document.getElementById("set-folder").value = d.folder || "";
+  } catch (e) {
+    console.error("Backup settings", e);
+  }
+}
+
+async function saveBackupSettings(event) {
+  const __release = window.UI.submitGuard(event);
+  if (!__release) return;
+  const msg = document.getElementById("set-msg");
+  try {
+    const res = await fetch("/settings/backup", { method: "PUT",
+      headers: {"Content-Type":"application/json"}, body: JSON.stringify({
+        auto_enabled: document.getElementById("set-auto-enabled").value === "true",
+        auto_hour: parseInt(document.getElementById("set-auto-hour").value),
+        keep_count: parseInt(document.getElementById("set-keep").value),
+      }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+    msg.textContent = `Saved — daily at ${String(data.auto_hour).padStart(2, "0")}:00, keeping last ${data.keep_count}.`;
+    __release();
+    msg.style.color = "var(--color-success)";
+  } catch (e) {
+    msg.textContent = (e.message || "Failed");
+    msg.style.color = "var(--color-danger)";
+    __release();
+  }
+}
+
+async function saveBackupFolder(event) {
+  const __release = window.UI.submitGuard(event);
+  if (!__release) return;
+  const msg = document.getElementById("set-msg");
+  try {
+    const data = await window.UI.api("/settings/backup", { method: "PUT",
+      body: { folder: document.getElementById("set-folder").value } });
+    document.getElementById("set-folder").value = data.folder || "";
+    msg.textContent = data.folder
+      ? "Backups will be stored in " + data.folder
+      : "Using the default data/backups folder.";
+    msg.style.color = "var(--color-success)";
+    if (window.App && window.App.refreshBackupStatus) window.App.refreshBackupStatus();
+    __release();
+  } catch (e) {
+    msg.textContent = (e.message || "Failed");
+    msg.style.color = "var(--color-danger)";
+    __release();
+  }
+}
+
+async function loadEmailSettings() {
+  const cards = ["email-settings-card", "report-settings-card"];
+  const me = window.Auth ? window.Auth.getUser() : null;
+  if (!me || String(me.role) !== "admin") {
+    cards.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = "none"; });
+    return;
+  }
+  try {
+    const d = await window.UI.api("/settings/email");
+    document.getElementById("em-host").value = d.smtp_host || "";
+    document.getElementById("em-port").value = d.smtp_port || 587;
+    document.getElementById("em-sec").value = d.use_ssl ? "ssl" : (d.use_tls ? "starttls" : "none");
+    if (d.use_ssl) document.getElementById("em-port").value = document.getElementById("em-port").value || 465;
+    document.getElementById("em-user").value = d.username || "";
+    document.getElementById("em-from").value = d.from_addr || "";
+    document.getElementById("em-alert-to").value = d.alert_to || "";
+    document.getElementById("rep-enabled").value = d.report_enabled ? "true" : "false";
+    document.getElementById("rep-hour").value = d.report_hour;
+    document.getElementById("rep-frequency").value = d.report_frequency || "daily";
+    document.getElementById("rep-weekday").value = d.report_weekday != null ? d.report_weekday : 4;
+    document.getElementById("rep-to").value = d.report_to || "";
+    paintSectionBoxes(d.report_sections);
+    syncFrequencyVisibility();
+  } catch (e) {
+    console.error("Email settings", e);
+  }
+}
+
+async function saveEmailSettings(event) {
+  const __release = window.UI.submitGuard(event);
+  if (!__release) return;
+  const msg = document.getElementById("em-msg");
+  try {
+    const pw = document.getElementById("em-pass").value;
+    const payload = {
+      "email.smtp_host": document.getElementById("em-host").value.trim(),
+      smtp_port: parseInt(document.getElementById("em-port").value) || 587,
+      use_tls: document.getElementById("em-sec").value === "starttls",
+      use_ssl: document.getElementById("em-sec").value === "ssl",
+      "email.username": document.getElementById("em-user").value.trim(),
+      "email.from_addr": document.getElementById("em-from").value.trim(),
+      "email.alert_to": document.getElementById("em-alert-to").value.trim(),
+    };
+    if (pw) payload.password = pw;
+    const res = await fetch("/settings/email", { method: "PUT",
+      headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+    document.getElementById("em-pass").value = "";
+    msg.textContent = "Email settings saved.";
+    msg.style.color = "var(--color-success)";
+    __release();
+  } catch (e) {
+    msg.textContent = (e.message || "Failed");
+    msg.style.color = "var(--color-danger)";
+    __release();
+  }
+}
+
+async function sendTestEmail() {
+  const msg = document.getElementById("em-msg");
+  try {
+    msg.textContent = "Sending…";
+    const res = await fetch("/settings/email/test", { method: "POST",
+      headers: {"Content-Type":"application/json"}, body: "{}" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+    msg.textContent = "Test mail sent to " + (data.to || []).join(", ");
+    msg.style.color = "var(--color-success)";
+  } catch (e) {
+    msg.textContent = (e.message || "Failed");
+    msg.style.color = "var(--color-danger)";
+  }
+}
+
+function selectedSections() {
+  const out = [];
+  document.querySelectorAll("#rep-sections input[data-sec]").forEach(cb => {
+    if (cb.checked) out.push(cb.dataset.sec);
+  });
+  return out;
+}
+
+function paintSectionBoxes(selected) {
+  const sel = selected && selected.length ? selected : REP_SECTION_LABELS.map(x => x[0]);
+  document.getElementById("rep-sections").innerHTML = REP_SECTION_LABELS.map(([k, label, hint]) =>
+    `<label style="display:flex; align-items:flex-start; gap:6px; cursor:pointer; min-width:200px; max-width:300px;">` +
+    `<input type="checkbox" data-sec="${k}" ${sel.includes(k) ? "checked" : ""} style="margin-top:2px;" />` +
+    `<span>${label}<br><small style="color:var(--color-text-muted); font-weight:400;">${hint}</small></span></label>`
+  ).join("");
+}
+
+function setAllSections(on) {
+  document.querySelectorAll("#rep-sections input[data-sec]").forEach(cb => { cb.checked = !!on; });
+}
+
+// The weekday only applies to weekly mails; hide it for daily so it never
+// reads as a second schedule.
+function syncFrequencyVisibility() {
+  const wrap = document.getElementById("rep-weekday-wrap");
+  if (!wrap) return;
+  const weekly = (document.getElementById("rep-frequency") || {}).value === "weekly";
+  wrap.style.display = weekly ? "" : "none";
+}
+
+async function previewReport() {
+  const msg = document.getElementById("rep-msg");
+  const box = document.getElementById("rep-preview");
+  try {
+    const res = await fetch("/settings/email/preview", { method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ sections: selectedSections() }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+    box.textContent = data.subject + "\nTo: " + (data.to || "—") + "\n\n" + data.body;
+    box.style.display = "block";
+  } catch (e) {
+    msg.textContent = (e.message || "Failed");
+    msg.style.color = "var(--color-danger)";
+  }
+}
+
+async function saveReportSettings(event) {
+  const __release = window.UI.submitGuard(event);
+  if (!__release) return;
+  const msg = document.getElementById("rep-msg");
+  try {
+    // The server refuses an empty section list (400), so stop here with a
+    // plain message instead of letting the save fail opaquely.
+    const secs = selectedSections();
+    if (!secs.length) {
+      msg.textContent = "Pick at least one section to include.";
+      msg.style.color = "var(--color-danger)";
+      __release();
+      return;
+    }
+    const res = await fetch("/settings/email", { method: "PUT",
+      headers: {"Content-Type":"application/json"}, body: JSON.stringify({
+        report_enabled: document.getElementById("rep-enabled").value === "true",
+        report_hour: parseInt(document.getElementById("rep-hour").value),
+        report_frequency: document.getElementById("rep-frequency").value,
+        report_weekday: parseInt(document.getElementById("rep-weekday").value),
+        "email.report_to": document.getElementById("rep-to").value.trim(),
+        report_sections: secs,
+      }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+    paintSectionBoxes(data.report_sections);
+    msg.textContent = data.report_frequency === "weekly"
+      ? `Saved — weekly on ${["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][data.report_weekday] || ""} at ${String(data.report_hour).padStart(2, "0")}:00.`
+      : `Saved — daily at ${String(data.report_hour).padStart(2, "0")}:00.`;
+    msg.style.color = "var(--color-success)";
+    __release();
+  } catch (e) {
+    msg.textContent = (e.message || "Failed");
+    msg.style.color = "var(--color-danger)";
+    __release();
+  }
+}
+
+async function loadSessionSettings() {
+  const card = document.getElementById("session-settings-card");
+  const me = window.Auth ? window.Auth.getUser() : null;
+  if (!me || String(me.role) !== "admin") {
+    if (card) card.style.display = "none";
+    return;
+  }
+  try {
+    const d = await window.UI.api("/settings/session");
+    document.getElementById("set-lock-min").value = d.lock_minutes != null ? d.lock_minutes : 15;
+  } catch (e) {
+    console.error("Session settings", e);
+  }
+}
+
+async function saveSessionSettings(event) {
+  const __release = window.UI.submitGuard(event);
+  if (!__release) return;
+  const msg = document.getElementById("sess-msg");
+  try {
+    const data = await window.UI.api("/settings/session", { method: "PUT",
+      body: { lock_minutes: parseInt(document.getElementById("set-lock-min").value) || 0 } });
+    document.getElementById("set-lock-min").value = data.lock_minutes;
+    msg.textContent = data.lock_minutes
+      ? `Sessions lock after ${data.lock_minutes} idle minutes.`
+      : "Auto-lock off.";
+    msg.style.color = "var(--color-success)";
+    if (window.App && window.App.refreshLockSetting) window.App.refreshLockSetting();
+    __release();
+  } catch (e) {
+    msg.textContent = (e.message || "Failed");
+    msg.style.color = "var(--color-danger)";
+    __release();
+  }
+}
+
+async function sendReportNow() {
+  const msg = document.getElementById("rep-msg");
+  try {
+    msg.textContent = "Sending…";
+    const res = await fetch("/settings/email/send-report", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+    msg.textContent = "Report sent to " + (data.report_to || "recipients") + ".";
+    msg.style.color = "var(--color-success)";
+  } catch (e) {
+    msg.textContent = (e.message || "Failed");
+    msg.style.color = "var(--color-danger)";
+  }
+}
+
+function escShare(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+async function loadShares() {
+  const card = document.getElementById("shares-card");
+  const me = window.Auth ? window.Auth.getUser() : null;
+  if (!me || String(me.role) !== "admin") {
+    if (card) card.style.display = "none";
+    return;
+  }
+  try {
+    const data = await window.UI.api("/dashboard/shares");
+    const rows = (data || []).map(s => ({
+      link: window.location.origin + s.url,
+      by: s.created_by || "—",
+      at: window.UI.dateWithTime(s.created_at, s.created_at),
+      atKey: window.UI.tsKey(s.created_at),
+      actions: `<span class="row-actions"><button class="btn btn-sm btn-tool" onclick="copyShareLink('${s.url}')">Copy</button><button class="btn btn-sm btn-danger" onclick="revokeShare('${s.link_id}')">Revoke</button></span>`
+    }));
+    const container = document.getElementById("shares-table");
+    if (container && window.UI.renderTable) {
+      window.UI.renderTable(container, rows, [
+        {key:"link",label:"Link"},{key:"by",label:"Created By"},{key:"at",label:"Created"},{key:"actions",label:"Actions"}
+      ], { sortValue: { at: r => r.atKey } });
+    }
+    if (!rows.length && container) container.innerHTML = "<p style='font-size:13px;color:#5b6b84;'>No active share links.</p>";
+  } catch (e) {
+    console.error("Shares", e);
+  }
+}
+
+async function copyShareLink(url) {
+  const full = window.location.origin + url;
+  try {
+    await navigator.clipboard.writeText(full);
+    window.UI.notify("Link copied", "success");
+  } catch (e) {
+    prompt("Copy share link:", full);
+  }
+}
+
+async function revokeShare(linkId) {
+  if (!confirm("Revoke this share link? It will stop working immediately.")) return;
+  try {
+    const res = await fetch("/dashboard/shares/" + encodeURIComponent(linkId), { method: "DELETE" });
+    if (!res.ok) throw new Error("Failed");
+    window.UI.notify("Link revoked", "success");
+    loadShares();
+  } catch (e) {
+    window.UI.notify(e.message || "Failed", "error");
+  }
+}
+</script>

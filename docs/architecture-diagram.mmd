@@ -1,0 +1,164 @@
+`mermaid
+flowchart TB
+    classDef master fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
+    classDef trans fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#e65100
+    classDef report fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef sys fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+    classDef infra fill:#eceff1,stroke:#455a64,stroke-width:2px,color:#263238
+
+    subgraph Entry[ENTRY POINTS]
+        Exe[(ShresthMasalaIndustry.exe)]
+        Dev[(python main_window.py)]
+    end
+    class Exe,Dev infra
+
+    subgraph Core[CORE ARCHITECTURE]
+        direction TB
+        subgraph FE[FRONTEND]
+            Pages[12 HTML Pages]
+            JS[JS Modules]
+            CSS[CSS Design System]
+        end
+        subgraph BE[BACKEND]
+            Main[backend/main.py ~8600 lines]
+            Svcs[services: import, export, gst, pdf]
+            Models[23 SQLAlchemy Entities]
+            Schemas[32 Pydantic Schemas]
+            CoreMod[config, database, security]
+        end
+        FE -->|/frontend mount| BE
+        Main --> Svcs
+        Main --> Models
+        Main --> Schemas
+        Main --> CoreMod
+    end
+    class Pages,JS,CSS infra
+    class Main,Svcs,Models,Schemas,CoreMod infra
+
+    subgraph Masters[MASTERS]
+        Cust[(Customers)]
+        Supp[(Suppliers)]
+        RM[(Raw Materials)]
+        Prod[(Products)]
+        Pack[(Packaging Sizes)]
+        ExpCat[(Expense Categories)]
+        Emp[(Employees)]
+    end
+    class Cust,Supp,RM,Prod,Pack,ExpCat,Emp master
+
+    subgraph Trans[TRANSACTIONS]
+        PI[(Purchase Invoices)]
+        SPay[(Supplier Payments)]
+        SC[(Sales Challans)]
+        Conf[(Challan Confirm)]
+        CPay[(Customer Payments)]
+        SI[(Sales Invoices GST)]
+        PEntry[(Production Entries)]
+        WF[(Configurable Workflow)]
+        Waste[(Wastage Tracking)]
+        FSM[(Stock Movements)]
+        OStock[(Opening Stock)]
+        Adj[(Stock Adjustments)]
+        Alert[(Low Stock Alerts)]
+        Exp[(Expense Entry)]
+        Att[(Attendance)]
+        Lev[(Leaves)]
+        Sal[(Salary Payments)]
+        Adv[(Advances)]
+        Ded[(Deductions)]
+    end
+    class PI,SPay,SC,Conf,CPay,SI,PEntry,WF,Waste,FSM,OStock,Adj,Alert,Exp,Att,Lev,Sal,Adv,Ded trans
+
+    subgraph IO[IMPORT EXPORT]
+        Imp[(IMPORT 8 Types)]
+        Exp2[(EXPORT XLSX PDF)]
+    end
+    class Imp,Exp2 report
+
+    subgraph Report[REPORTING]
+        Dash[(Dashboard)]
+        ChallanPrint[(Challan Print)]
+        InvPrint[(Invoice Print)]
+        ExportRpt[(Export Reports)]
+    end
+    class Dash,ChallanPrint,InvPrint,ExportRpt report
+
+    subgraph System[SYSTEM SECURITY]
+        Auth[(Auth Roles)]
+        Perm[(Permissions)]
+        Audit[(Audit Trail)]
+        Backup[(Backup Restore)]
+        Settings[(Settings)]
+    end
+    class Auth,Perm,Audit,Backup,Settings sys
+
+    subgraph Data[DATA LAYER]
+        DB[(SQLite FK Enforced)]
+        LiveDev[(Dev DB)]
+        LiveExe[(Exe DB)]
+        Backups[(Backups)]
+        AppLog[(app.log)]
+    end
+    class DB,LiveDev,LiveExe,Backups,AppLog infra
+
+    subgraph Build[BUILD PACKAGING]
+        BuildScript[(scripts/build.py)]
+        Spec[(ShresthMasalaIndustry.spec)]
+        CloseFirst[(CLOSE APP FIRST)]
+    end
+    class BuildScript,Spec,CloseFirst infra
+
+    Cust --> SC
+    Cust --> CPay
+    Supp --> PI
+    Supp --> SPay
+    RM --> PI
+    Prod --> SC
+    Prod --> SI
+    Prod --> PEntry
+    Prod --> FSM
+    Prod --> OStock
+    Pack --> SC
+    Pack --> SI
+    Pack --> PEntry
+    Pack --> FSM
+    Pack --> OStock
+    ExpCat --> Exp
+    
+    PI --> SPay
+    SC --> Conf
+    Conf --> SI
+    SC --> CPay
+    PEntry --> FSM
+    PEntry --> Waste
+    FSM --> Alert
+    
+    Masters --> Imp
+    Trans --> Imp
+    Masters --> Exp2
+    Trans --> Exp2
+    
+    Trans --> Dash
+    SC --> ChallanPrint
+    SI --> InvPrint
+    Trans --> ExportRpt
+    
+    Auth --> Core
+    Perm --> Core
+    Audit --> Core
+    Backup --> DB
+    Settings --> Core
+    
+    DB --> LiveDev
+    DB --> LiveExe
+    DB --> Backups
+    CoreMod --> DB
+    Models --> DB
+    Main --> DB
+    Backup --> AppLog
+    BuildScript --> Exe
+    Spec --> Exe
+    
+    Exe --> Core
+    Dev --> Core
+`

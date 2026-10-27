@@ -1,0 +1,354 @@
+<!-- Users -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h2 style="font-size: 18px; font-weight: 600;">Users</h2>
+    <button class="btn btn-primary" onclick="openNewUserForm()">+ Add User</button>
+  </div>
+
+  <div id="user-form" style="display:none; border-top:1px solid var(--color-border); padding-top:16px; margin-bottom:16px;">
+    <h4 id="user-form-title" style="font-size:14px; font-weight:600; margin-bottom:12px;">New User</h4>
+    <form onsubmit="saveUser(event)" id="new-user-form">
+      <div class="form-row">
+        <div class="form-group"><label>Username</label><input id="usr-name" required /></div>
+        <div class="form-group"><label>Full Name</label><input id="usr-full" /></div>
+        <div class="form-group"><label>Email</label><input id="usr-email" type="email" /></div>
+      </div>
+      <div class="form-row" id="usr-pw-row">
+        <div class="form-group"><label>Password (min 6 chars)</label><input id="usr-pw" type="password" autocomplete="new-password" /></div>
+        <div class="form-group"><label>Role</label>
+          <select id="usr-role">
+            <option value="admin">Admin</option>
+            <option value="manager">Manager</option>
+            <option value="data_entry">Data Entry</option>
+            <option value="viewer">Viewer</option>
+            <option value="challan_entry">Challan Entry</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Status</label>
+          <select id="usr-active">
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:8px;">
+        <button type="submit" class="btn btn-primary" id="usr-save-btn">Save</button>
+        <button type="button" class="btn btn-danger-outline" onclick="cancelUserForm()">Cancel</button>
+      </div>
+    </form>
+    <div id="usr-msg" style="font-size:13px; margin-top:10px; color: var(--color-text-muted);"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>User List</h3>
+  <div id="usr-table"></div>
+  <p class="auth-hint" style="text-align:left;">Roles: Admin (everything) · Manager (all business work) · Data Entry (add/edit only) · Viewer (read-only) · Challan Entry (challans only, no payments).</p>
+</div>
+
+<div class="card" id="perm-card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+    <h3 style="margin:0;">Role Permissions</h3>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <label for="perm-role" style="font-size:12px; font-weight:600; color:var(--color-text-muted); text-transform:uppercase;">Role</label>
+      <select id="perm-role" onchange="loadPermissions()" style="padding:7px 10px; border:1px solid var(--color-border-strong); border-radius:var(--radius-sm); font-size:14px; background:#fff;">
+        <option value="manager">Manager</option>
+        <option value="data_entry">Data Entry</option>
+        <option value="viewer">Viewer</option>
+        <option value="challan_entry">Challan Entry</option>
+      </select>
+      <button class="btn btn-primary btn-sm" id="perm-save" onclick="savePermissions(event)">Save changes</button>
+    </div>
+  </div>
+  <p class="auth-hint" style="text-align:left; margin:0 0 12px;">
+    Tick a box to let that role do it. Unticking a permission that is on by default turns it off
+    for that role only. Locked rows cannot be changed.
+    <strong>Admin permissions are fixed</strong> so nobody can lock themselves out.
+  </p>
+  <div id="perm-table"></div>
+  <p id="perm-count" style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"></p>
+</div>
+
+<script>
+(function(){
+  let editingUserId = null;
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function renderUserTable(list) {
+    const rows = (list || []).map(u => ({
+      username: u.username || "",
+      name: u.full_name || "—",
+      email: u.email || "—",
+      role: String(u.role || "").replace("_", " "),
+      status: u.is_active ? "Active" : "Inactive",
+      actions: `<span class="row-actions"><button class="btn btn-sm btn-warn" onclick="editUser(${u.id})">Edit</button>` +
+        `<button class="btn btn-sm btn-tool" onclick="resetPassword(${u.id}, '${(u.username || "").replace(/'/g, "\\'")}')">Reset PW</button>` +
+        (u.is_active
+          ? `<button class="btn btn-sm btn-danger" onclick="deactivateUser(${u.id}, '${(u.username || "").replace(/'/g, "\\'")}')">Deactivate</button>`
+          : `<button class="btn btn-sm btn-restore" onclick="reactivateUser(${u.id})">Reactivate</button>`) +
+        `</span>`
+    }));
+    const container = document.getElementById("usr-table");
+    if (container && window.UI.renderTable) {
+      window.UI.renderTable(container, rows, [
+        {key:"username",label:"Username"},{key:"name",label:"Name"},{key:"email",label:"Email"},
+        {key:"role",label:"Role"},{key:"status",label:"Status"},{key:"actions",label:"Actions"}
+      ]);
+    }
+  }
+
+  let permMatrix = null;
+  let permEdits = {};
+
+  function renderPermissionTable() {
+    if (!permMatrix) return;
+    const role = document.getElementById("perm-role").value;
+    const rows = permMatrix.permissions.map(p => {
+      const info = p.roles[role] || {};
+      const granted = permEdits[p.name] !== undefined ? permEdits[p.name] : !!info.granted;
+      const isOverride = permEdits[p.name] !== undefined
+        ? permEdits[p.name] !== !!info.default
+        : info.override !== null && info.override !== undefined;
+      const locked = !!info.locked;
+      const boxId = "perm-" + p.name.replace(/[^a-z0-9]/gi, "-");
+      const mark = isOverride
+        ? '<span class="badge badge-warning" style="margin-left:6px;">changed</span>' : "";
+      return {
+        _archived: false,
+        permission: `<label for="${boxId}" style="display:flex; align-items:center; gap:8px; cursor:${locked ? "not-allowed" : "pointer"};">
+            <input type="checkbox" id="${boxId}" ${granted ? "checked" : ""} ${locked ? "disabled" : ""}
+                   onchange="togglePermission('${p.name}', this.checked)" />
+            <span>${esc(p.name)}</span>${mark}
+          </label>`,
+        module: esc(p.module),
+        action: esc(p.action),
+        description: esc(p.description || ""),
+        _locked: locked,
+      };
+    });
+    const container = document.getElementById("perm-table");
+    if (container && window.UI.renderTable) {
+      window.UI.renderTable(container, rows, [
+        {key:"permission",label:"Permission"},
+        {key:"module",label:"Module"},
+        {key:"action",label:"Action"},
+        {key:"description",label:"Description"}
+      ], { sortable: true });
+    }
+    const total = rows.length;
+    const lockedCount = rows.filter(r => r._locked).length;
+    const el = document.getElementById("perm-count");
+    if (el) {
+      el.textContent = `${role.replace("_", " ")}: ${total} permissions (${lockedCount} locked). `
+        + (Object.keys(permEdits).length ? `${Object.keys(permEdits).length} unsaved change(s).` : "No unsaved changes.");
+    }
+  }
+
+  window.togglePermission = function (name, checked) {
+    const role = document.getElementById("perm-role").value;
+    if (!permMatrix) return;
+    const info = permMatrix.permissions.find(p => p.name === name).roles[role];
+    if (info.locked) { renderPermissionTable(); return; }
+    if (checked === !!info.default) delete permEdits[name];
+    else permEdits[name] = checked;
+    renderPermissionTable();
+  };
+
+  window.loadPermissions = async function () {
+    permEdits = {};
+    try {
+      permMatrix = await window.UI.api("/permissions");
+      renderPermissionTable();
+    } catch (e) {
+      console.error("Permissions", e);
+      const c = document.getElementById("perm-table");
+      if (c) c.innerHTML = "<p>Failed to load permissions.</p>";
+    }
+  };
+
+  window.savePermissions = async function (event) {
+    const __release = window.UI.submitGuard(event);
+    if (!__release) return;
+    const role = document.getElementById("perm-role").value;
+    if (!Object.keys(permEdits).length) {
+      window.UI.notify("Nothing to save", "info");
+      __release();
+      return;
+    }
+    const msg = document.getElementById("usr-msg");
+    try {
+      const res = await window.UI.api("/permissions", {
+        method: "PUT",
+        body: JSON.stringify({ role: role, grants: permEdits }),
+      });
+      window.UI.notify(`Updated ${res.changed} permission(s) for ${role.replace("_", " ")}`, "success");
+      await loadPermissions();
+      __release();
+    } catch (e) {
+      window.UI.notify(e.message || "Save failed", "error");
+      __release();
+    }
+  };
+
+  async function loadUsers() {
+    try {
+      const data = await window.UI.api("/users");
+      renderUserTable(data || []);
+    } catch (e) {
+      console.error("Users", e);
+      document.getElementById("usr-table").innerHTML = "<p>Failed to load.</p>";
+    }
+  }
+
+  window.openNewUserForm = function () {
+    editingUserId = null;
+    document.getElementById("new-user-form").reset();
+    document.getElementById("usr-pw-row").style.display = "";
+    document.getElementById("usr-pw").required = true;
+    document.getElementById("user-form-title").textContent = "New User";
+    document.getElementById("usr-save-btn").textContent = "Save";
+    document.getElementById("usr-msg").textContent = "";
+    document.getElementById("user-form").style.display = "block";
+    document.getElementById("usr-name").focus();
+  };
+
+  window.cancelUserForm = function () {
+    editingUserId = null;
+    document.getElementById("new-user-form").reset();
+    document.getElementById("usr-save-btn").textContent = "Save";
+    document.getElementById("user-form-title").textContent = "New User";
+    document.getElementById("usr-msg").textContent = "";
+    document.getElementById("user-form").style.display = "none";
+  };
+
+  window.saveUser = async function (event) {
+    if (event) event.preventDefault();
+    const __release = window.UI.submitGuard(event);
+    if (!__release) return;
+    window.UI.clearFieldErrors(document.getElementById("new-user-form"));
+    const USR_FIELDS = { username: "usr-name", password: "usr-pw", full_name: "usr-full", email: "usr-email", role: "usr-role" };
+    let __detail = null;
+    const msg = document.getElementById("usr-msg");
+    try {
+      let res;
+      if (editingUserId == null) {
+        const pw = document.getElementById("usr-pw").value;
+        if (!pw || pw.length < 6) throw new Error("Password must be at least 6 characters");
+        res = await fetch("/users", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({
+          username: document.getElementById("usr-name").value.trim(),
+          password: pw,
+          full_name: document.getElementById("usr-full").value.trim() || null,
+          email: document.getElementById("usr-email").value.trim() || null,
+          role: document.getElementById("usr-role").value,
+        })});
+      } else {
+        res = await fetch("/users/" + editingUserId, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({
+          username: document.getElementById("usr-name").value.trim(),
+          full_name: document.getElementById("usr-full").value.trim() || null,
+          email: document.getElementById("usr-email").value.trim() || null,
+          role: document.getElementById("usr-role").value,
+          is_active: document.getElementById("usr-active").value === "active",
+        })});
+      }
+      const data = await res.json();
+      if (!res.ok) { __detail = data.detail; throw new Error(window.UI.formatError(data, "Failed")); }
+      msg.textContent = editingUserId == null ? "User created." : "User updated.";
+      msg.style.color = "var(--color-success)";
+      cancelUserForm();
+      document.getElementById("user-form").style.display = "none";
+      loadUsers();
+      __release();
+    } catch (e) {
+      if (!window.UI.fieldError(document.getElementById("new-user-form"), __detail, USR_FIELDS)) {
+        msg.textContent = (e.message || "Error");
+      } else {
+        msg.textContent = "Please fix the highlighted fields.";
+      }
+      msg.style.color = "var(--color-danger)";
+      __release();
+    }
+  };
+
+  window.editUser = async function (id) {
+    const msg = document.getElementById("usr-msg");
+    try {
+      const users = await window.UI.api("/users");
+      const d = (users || []).find(u => u.id === id);
+      if (!d) throw new Error("User not found");
+      editingUserId = id;
+      document.getElementById("usr-name").value = d.username || "";
+      document.getElementById("usr-full").value = d.full_name || "";
+      document.getElementById("usr-email").value = d.email || "";
+      document.getElementById("usr-role").value = d.role || "viewer";
+      document.getElementById("usr-active").value = d.is_active ? "active" : "inactive";
+      document.getElementById("usr-pw-row").style.display = "none";
+      document.getElementById("usr-pw").required = false;
+      document.getElementById("user-form-title").textContent = "Edit User #" + id;
+      document.getElementById("usr-save-btn").textContent = "Update";
+      msg.textContent = "";
+      document.getElementById("user-form").style.display = "block";
+    document.getElementById("usr-name").focus();
+    } catch (e) {
+      msg.textContent = (e.message || "Error");
+      msg.style.color = "var(--color-danger)";
+    }
+  };
+
+  window.resetPassword = async function (id, username) {
+    const pw = prompt(`New password for '${username}' (min 6 characters):`);
+    if (pw === null) return;
+    if (pw.length < 6) { alert("Password must be at least 6 characters."); return; }
+    try {
+      const res = await fetch("/users/" + id + "/password", {
+        method: "PUT", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ password: pw }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+      window.UI.notify("Password updated for " + username, "success");
+    } catch (e) {
+      alert("Failed: " + (e.message || e));
+    }
+  };
+
+  window.deactivateUser = async function (id, username) {
+    if (!confirm("Deactivate user '" + username + "'? They will not be able to sign in.")) return;
+    try {
+      const res = await fetch("/users/" + id, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ is_active: false }) });
+      if (!res.ok) throw new Error("Failed");
+      loadUsers();
+    } catch (e) {
+      alert("Failed: " + (e.message || e));
+    }
+  };
+
+  window.reactivateUser = async function (id) {
+    try {
+      const res = await fetch("/users/" + id, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ is_active: true }) });
+      if (!res.ok) throw new Error("Failed");
+      loadUsers();
+    } catch (e) {
+      alert("Failed: " + (e.message || e));
+    }
+  };
+
+  loadUsers();
+  // The permissions card is admin-only; hide it entirely for anyone else so a
+  // non-admin never sees controls they cannot use.
+  try {
+    const me = window.Auth && window.Auth.getUser ? window.Auth.getUser() : null;
+    if (me && String(me.role) === "admin") {
+      loadPermissions();
+    } else {
+      const card = document.getElementById("perm-card");
+      if (card) card.style.display = "none";
+    }
+  } catch (e) {
+    const card = document.getElementById("perm-card");
+    if (card) card.style.display = "none";
+  }
+})();
+</script>

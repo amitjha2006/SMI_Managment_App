@@ -1,0 +1,1980 @@
+<!-- Products / Inventory -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h2 style="font-size: 18px; font-weight: 600;">Products & Packaging</h2>
+    <button class="btn btn-primary" onclick="openNewProductForm()">+ Add Product</button>
+  </div>
+
+  <div id="prod-form" style="display:none; border-top:1px solid var(--color-border); padding-top:16px; margin-bottom:16px;">
+    <h4 style="font-size:14px; font-weight:600; margin-bottom:12px;">New Product</h4>
+    <form onsubmit="createProduct(event)" id="new-prod-form">
+      <div class="form-row">
+        <div class="form-group"><label>Product Name</label><input id="prod-name" list="prod-name-list" autocomplete="off" required /><datalist id="prod-name-list"></datalist>
+          <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
+            Pick an already-added product to attach this size to it, or type a
+            new name to create it. Matching ignores case and extra spaces.
+          </small>
+        </div>
+        <div class="form-group">
+          <label for="prod-gst">GST Rate</label>
+          <input id="prod-gst" type="number" min="0" max="100" step="0.01" value="0" />
+          <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
+            Percentage used on tax invoices, e.g. 5 for 5%. Leave 0 if this
+            product is never invoiced - invoices are blocked until it is set.
+          </small>
+        </div>
+        <div class="form-group">
+          <label for="prod-cat">Category</label>
+          <select id="prod-cat"></select>
+          <div id="prod-cat-new-wrap" style="display:none; margin-top:6px;">
+            <input id="prod-cat-new" placeholder="New category name" />
+          </div>
+          <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
+            Picked from the category list, so every product groups the same way in
+            reports and in the product-list filter above. Choose "+ New category"
+            the first time you need one.
+          </small>
+        </div>
+        <div class="form-group">
+          <label for="prod-rate">Fallback rate (per kg)</label>
+          <input id="prod-rate" type="number" step="0.01" />
+          <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
+            Only used if a pack size below has no rate of its own. The size's own
+            rate always takes priority.
+          </small>
+        </div>
+      </div>
+      <h5 style="font-size:13px; font-weight:600; margin-top:10px; color: var(--color-text-muted);">Packaging Size</h5>
+      <div class="form-row">
+        <div class="form-group"><label for="pack-size">Size Name (e.g. 50g, 100g)</label><input id="pack-size" list="pack-size-list" autocomplete="off" placeholder="e.g. 50g" oninput="syncProductPouch()" /><datalist id="pack-size-list"></datalist>
+          <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
+            Pick an already-added size or type a new one.
+          </small>
+        </div>
+        <div class="form-group"><label for="pack-weight">Weight</label><div style="display:flex; align-items:center; gap:6px;"><input id="pack-weight" type="number" step="0.001" value="0.05" style="flex:1; min-width:0;" oninput="syncProductPouch()" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">kg</span></div></div>
+      <div class="form-group"><label for="pack-pouch">Pouch (g)</label><div style="display:flex; align-items:center; gap:6px;"><input id="pack-pouch" type="number" step="0.1" min="0" style="flex:1; min-width:0;" data-auto="1" oninput="this.dataset.auto='0'" title="Empty pouch weight in grams - fills itself from the size, stays editable" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">g</span></div></div>
+      <div class="form-group"><label for="pack-wrapper">Wrapper roll</label><select id="pack-wrapper" title="Raw material this size is pouched from"><option value="">No wrapper roll</option></select></div>
+        <div class="form-group">
+          <label for="pack-rate">Rate</label>
+          <div style="display:flex; align-items:center; gap:6px;"><input id="pack-rate" type="number" step="0.01" style="flex:1; min-width:0;" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">/kg</span></div>
+          <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
+            The price actually used for this pack size. Leave it at 0 and the
+            fallback rate above is used instead.
+          </small>
+        </div>
+        <div class="form-group"><label for="pack-opening">Opening (packets)</label><input id="pack-opening" type="number" step="1" min="0" value="0" /></div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:8px;">
+        <button type="submit" class="btn btn-primary">Save Product</button>
+        <button type="button" class="btn btn-danger-outline" onclick="document.getElementById('prod-form').style.display='none'">Cancel</button>
+      </div>
+    </form>
+    <div id="prod-msg" style="font-size:13px; margin-top:10px; color: var(--color-text-muted);"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+    <h3 style="margin:0;">Product List</h3>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <select id="prod-cat-filter" onchange="filterProducts()" title="Show only products in this category"
+        style="padding:8px 12px; border:1px solid var(--color-border); border-radius:6px; font-size:14px; min-width:170px;">
+        <option value="">All categories</option>
+      </select>
+      <input id="prod-search" type="search" placeholder="Search product, packaging, category…"
+        oninput="filterProducts()"
+        style="padding:8px 12px; border:1px solid var(--color-border); border-radius:6px; font-size:14px; min-width:240px;" />
+      <button class="btn btn-secondary btn-sm" type="button" onclick="resetProductFilters()" title="Clear search and category filter">↺ Reset</button>
+    </div>
+  </div>
+  <div id="prod-table"></div>
+  <p id="prod-count" style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"></p>
+</div>
+
+<!-- Category master. Products pick a category from this list rather than
+     typing free text, so reports group consistently. -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+    <div>
+      <h3 style="margin:0;">Categories</h3>
+      <p style="margin:4px 0 0; font-size:12px; color:var(--color-text-muted);">
+        Every product belongs to one of these. The list drives the category
+        filter on the product table and groups the Stock Analysis report, so
+        keeping it tidy keeps both the browsing and the numbers meaningful.
+      </p>
+    </div>
+    <button class="btn btn-sm btn-secondary" type="button" onclick="loadCategories()">Refresh</button>
+  </div>
+  <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px;">
+    <div class="form-group" style="margin:0;">
+      <label for="cat-new-name">New category</label>
+      <input id="cat-new-name" placeholder="e.g. Blended Masala" />
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label for="cat-new-parent">Under (optional)</label>
+      <select id="cat-new-parent"></select>
+    </div>
+    <button class="btn btn-primary" type="button" data-approve onclick="addCategory()">Add category</button>
+  </div>
+  <div id="cat-table"></div>
+  <p id="cat-msg" style="font-size:13px; margin-top:8px; color:var(--color-text-muted);"></p>
+
+  <!-- Production workflow editor. Which stages this product actually goes
+       through, and in what order. A product that is only blended and packed
+       should not have to be recorded as roasted and ground. -->
+  <div id="workflow-editor" class="modal-overlay" style="display:none;">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="Production workflow" style="max-width:560px;">
+    <div class="modal-head" data-drag-handle title="Drag to move">
+      <h5 id="wf-title" style="font-size:15px; font-weight:600; margin:0;">Production workflow</h5>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-sm btn-secondary" type="button" data-approve onclick="wfResetToDefault()">Select all</button>
+        <button class="modal-close" type="button" onclick="closeWorkflowEditor()" title="Close" aria-label="Close">×</button>
+      </div>
+    </div>
+    <div class="modal-body">
+    <p id="wf-note" style="font-size:12px; color:var(--color-text-muted); margin:0 0 10px;"></p>
+    <div id="wf-list" style="margin-bottom:10px;"></div>
+    <p style="font-size:12px; color:var(--color-text-muted); margin:0 0 6px;">Add a stage:</p>
+    <div id="wf-available" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;"></div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <button class="btn btn-sm btn-primary" type="button" data-approve onclick="saveWorkflow()">Save workflow</button>
+      <span id="wf-msg" style="font-size:12px; color:var(--color-text-muted);"></span>
+    </div>
+    </div>
+    </div>
+  </div>
+
+  <!-- Per-pack-size editor: a product's price varies by size, so each size
+       gets its own rate row rather than one number for the product. -->
+  <div id="size-editor" class="modal-overlay" style="display:none;">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="Edit product and pack sizes" style="max-width:1020px;">
+    <div class="modal-head" data-drag-handle title="Drag to move">
+      <h5 style="font-size:15px; font-weight:600; margin:0;">Edit product &amp; pack sizes</h5>
+      <button class="modal-close" type="button" onclick="closeSizeEditor()" title="Close" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+    <div class="form-row" style="margin-bottom:4px;">
+      <div class="form-group"><label>Copy recipe from…</label>
+        <div style="display:flex; gap:8px;">
+          <select id="copy-recipe-from" style="flex:1; min-width:0;"><option value="">Select a product with a recipe…</option></select>
+          <button class="btn btn-sm btn-tool" type="button" onclick="applyCopiedRecipe()" title="Fill the mix ratio and steps below from the chosen recipe">Copy</button>
+        </div>
+        <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
+          One click fills the ingredients below — tweak, then Save formulation.
+        </small>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Product name</label><input id="se-name" type="text" /></div>
+      <div class="form-group">
+        <label for="se-cat">Category</label>
+        <select id="se-cat"></select>
+        <div id="se-cat-new-wrap" style="display:none; margin-top:6px;">
+          <input id="se-cat-new" placeholder="New category name" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="se-base-rate">Fallback rate/kg</label>
+        <input id="se-base-rate" type="number" step="0.01" min="0" />
+        <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
+          Used only for a pack size whose own rate is 0.
+        </small>
+      </div>
+      <div class="form-group">
+        <label for="se-gst">GST rate (%)</label>
+        <input id="se-gst" type="number" step="0.01" min="0" max="100" />
+        <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
+          Per product, used on tax invoices. 0 blocks invoicing rather than
+          invoicing at no tax.
+        </small>
+      </div>
+      <div class="form-group">
+        <label for="se-hsn">HSN code</label>
+        <input id="se-hsn" type="text" maxlength="12" list="hsn-product-list" placeholder="e.g. 09109100 — pick or type" autocomplete="off" />
+        <datalist id="hsn-product-list"></datalist>
+        <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
+          Pick from the list or type a code. Printed on tax invoices. Your customer may need it to claim input
+          credit, so a blank is a warning, not a block.
+        </small>
+      </div>
+    </div>
+    <button class="btn btn-sm btn-primary" type="button" onclick="saveProductDetails()">Save product details</button>
+
+    <h5 style="font-size:13px; font-weight:600; margin:16px 0 8px;">Rate per pack size</h5>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Size</th><th>Weight</th><th>Rate</th><th>Packets/unit</th><th>Low alert below (pkts)</th><th>Pouch wt (g)</th><th>Wrapper roll</th><th></th></tr></thead>
+        <tbody id="se-sizes"></tbody>
+      </table>
+    </div>
+    <p style="font-size:11px; color:var(--color-text-muted); margin-top:6px;">
+      A size that already has stock history keeps its weight locked; its rate can still be changed.
+    </p>
+    <p id="se-rate-warning" style="display:none; font-size:12px; color:var(--color-warning);
+      background:var(--color-accent-soft); border-radius:var(--radius-sm);
+      padding:8px 10px; margin-top:8px;"></p>
+
+    <h5 style="font-size:13px; font-weight:600; margin:16px 0 8px;">Formulation — mix ratio (must total 100%)</h5>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Raw material</th><th>Share %</th><th>Rate/kg</th><th></th></tr></thead>
+        <tbody id="se-formulation"></tbody>
+      </table>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+      <button class="btn btn-sm btn-secondary" type="button" onclick="addFormulationRow()">+ Add ingredient</button>
+      <span id="se-form-total" style="font-size:13px; color:var(--color-text-muted);"></span>
+      <span id="se-form-cost" style="font-size:13px; color:var(--color-text-muted);"></span>
+      <button class="btn btn-sm btn-primary" type="button" onclick="saveFormulation()">Save formulation</button>
+      <span id="se-form-msg" style="font-size:13px;"></span>
+    </div>
+    <p style="font-size:11px; color:var(--color-text-muted); margin-top:6px;">
+      The ratio is a reference for mixing and prefilling production — it never moves stock.
+      Cost is indicative, at today's purchase rates.
+    </p>
+
+    <h5 style="font-size:13px; font-weight:600; margin:16px 0 8px;">Processing steps — how to make it</h5>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:36px;">#</th><th>Stage</th><th>Instruction</th><th></th></tr></thead>
+        <tbody id="se-form-steps"></tbody>
+      </table>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+      <button class="btn btn-sm btn-secondary" type="button" onclick="addFormulationStep()">+ Add step</button>
+      <span style="font-size:11px; color:var(--color-text-muted);">Free text, in order — e.g. "Roast at 120°C for 20 min, then cool". Saved together with the ratio above.</span>
+    </div>
+
+    <h5 style="font-size:13px; font-weight:600; margin:16px 0 8px;">Add another pack size</h5>
+    <div class="form-row">
+      <div class="form-group"><label>Product</label><input id="as-name" type="text" /></div>
+      <div class="form-group"><label>Size</label><input id="as-size" type="text" list="pack-size-list" autocomplete="off" placeholder="250g" oninput="syncPouchFromSize()" /></div>
+      <div class="form-group"><label>Weight</label><div style="display:flex; align-items:center; gap:6px;"><input id="as-weight" type="number" step="0.001" min="0" placeholder="0.25" style="flex:1; min-width:0;" oninput="syncPouchFromSize()" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">kg</span></div></div>
+      <div class="form-group"><label>Rate</label><div style="display:flex; align-items:center; gap:6px;"><input id="as-rate" type="number" step="0.01" min="0" placeholder="300" style="flex:1; min-width:0;" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">/kg</span></div></div>
+      <div class="form-group"><label>Pouch</label><div style="display:flex; align-items:center; gap:6px;"><input id="as-pouch" type="number" step="0.1" min="0" placeholder="6" style="flex:1; min-width:0;" data-auto="1" oninput="this.dataset.auto='0'" title="Empty pouch weight - fills itself from the size, stays editable" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">g</span></div></div>
+      <div class="form-group"><label>Wrapper roll</label><select id="as-wrapper" title="Raw material this size is pouched from"><option value="">No wrapper roll</option></select></div>
+    </div>
+    <button class="btn btn-sm btn-primary" type="button" onclick="addSizeToProduct(event)">Add pack size</button>
+    <p id="size-msg" style="font-size:13px; margin-top:10px; min-height:18px; color:var(--color-text-muted);"></p>
+    </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h2 style="font-size: 18px; font-weight: 600;">Stock Adjustments</h2>
+    <button class="btn btn-primary" data-approve onclick="openAdjustForm()">+ Adjust Stock</button>
+  </div>
+
+  <div id="adj-form" style="display:none; border-top:1px solid var(--color-border); padding-top:16px; margin-bottom:16px;">
+    <form onsubmit="saveAdjustment(event)" id="new-adj-form">
+      <div class="form-row">
+        <div class="form-group"><label>Stock Type</label>
+          <input type="hidden" id="adj-kind" value="finished_product" />
+          <div style="padding:8px 0; font-weight:600;">Finished Goods</div>
+        </div>
+        <div class="form-group" style="flex:1.6; min-width:200px;"><label>Item</label><select id="adj-item" required onchange="adjustProductChanged()"></select></div>
+        <div class="form-group" id="adj-pack-wrap" style="display:none;"><label>Packet Size</label><select id="adj-pack"></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Quantity — <span id="adj-unit-label">packets</span> (+ adds, − removes)</label>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <div style="display:flex; flex:0 0 auto; border-radius:6px; overflow:hidden; border:1px solid var(--color-border); gap:1px;">
+              <button type="button" id="adj-unit-packets" title="Type whole packets; kg comes from the size's own weight" onclick="setAdjustUnit('packets')">packets</button>
+              <button type="button" id="adj-unit-kg" title="Type an exact kg quantity" onclick="setAdjustUnit('kg')">kg</button>
+            </div>
+            <input id="adj-qty" type="number" step="1" required style="flex:1; min-width:0;" oninput="updateAdjHint()" />
+          </div>
+          <div id="adj-conv" style="font-size:11px; color:var(--color-text-muted); margin-top:2px; min-height:15px;"></div>
+        </div>
+        <div class="form-group"><label>Reason</label><input id="adj-reason" list="adj-reason-list" placeholder="e.g. damage, recount" autocomplete="off" required /><datalist id="adj-reason-list"></datalist></div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:8px; align-items:center;">
+        <button type="submit" class="btn btn-primary">Save Adjustment</button>
+        <button type="button" class="btn btn-danger-outline" onclick="cancelAdjustForm()">Cancel</button>
+        <span id="adj-hint" style="font-size:12px; color:var(--color-text-muted);"></span>
+      </div>
+    </form>
+    <div id="adj-msg" style="font-size:13px; margin-top:10px; color: var(--color-text-muted);"></div>
+  </div>
+
+  <h3>Adjustment History</h3>
+  <div id="adj-table"></div>
+</div>
+
+<script>
+(function(){
+  let allProducts = [];
+  // Material names for the formulation picker only (this page never shows
+  // the raw stock table; that lives on the raw-materials page).
+  let allRaw = [];
+  async function loadRawNames() {
+    try {
+      allRaw = await window.UI.api("/raw-materials") || [];
+    } catch (e) { console.error("Raw names", e); allRaw = []; }
+  }
+  let stockByProduct = {};
+  let allCategories = [];
+  const NEW_CAT = "__new__";
+
+  /* ---------- Category master ---------- */
+
+  function categoryOptions(sel, {includeNew, selectedId, blankLabel, activeOnly} = {}) {
+    if (!sel) return;
+    const keep = sel.value;
+    sel.innerHTML = "";
+    if (blankLabel !== undefined) {
+      const o = document.createElement("option");
+      o.value = ""; o.textContent = blankLabel;
+      sel.appendChild(o);
+    }
+    // Inactive categories stay visible where you might still need them (the
+    // editor, the filter) but are not offered when picking for a new product.
+    const list = activeOnly ? allCategories.filter(c => c.is_active) : allCategories;
+    list.forEach(c => {
+      const o = document.createElement("option");
+      o.value = String(c.id);
+      o.textContent = c.name + (c.product_count ? ` (${c.product_count})` : "")
+        + (c.is_active ? "" : " — inactive");
+      sel.appendChild(o);
+    });
+    if (includeNew) {
+      const o = document.createElement("option");
+      o.value = NEW_CAT; o.textContent = "+ New category…";
+      sel.appendChild(o);
+    }
+    // Prefer the caller's choice, else what was already selected, else the
+    // product's current category.
+    const want = selectedId != null ? String(selectedId) : keep;
+    if (want) sel.value = want;
+    if (!sel.value && list.length === 1) sel.value = String(list[0].id);
+    // The new-category toggle belongs to the editor selects only (they pass
+    // includeNew). Installing it here used to clobber the product-list
+    // filter's inline onchange, so picking a category silently did nothing.
+    if (includeNew) {
+      sel.onchange = () => {
+        const wrap = sel.id === "prod-cat" ? "prod-cat-new-wrap" : "se-cat-new-wrap";
+        const w = document.getElementById(wrap);
+        if (w) w.style.display = sel.value === NEW_CAT ? "" : "none";
+      };
+      sel.onchange();
+    }
+  }
+
+  function renderCategoryTable() {
+    const rows = allCategories.map(c => ({
+      name: c.name,
+      parent: c.parent_name || "—",
+      products: c.product_count != null ? c.product_count : "—",
+      status: c.is_active
+        ? '<span style="color:var(--color-success); font-weight:600;">Active</span>'
+        : '<span style="color:var(--color-text-muted);">Inactive</span>',
+      actions: `<span class="row-actions"><button class="btn btn-sm btn-warn" data-approve onclick="renameCategory(${c.id})">Rename</button>` +
+               `<button class="btn btn-sm btn-restore" data-approve onclick="toggleCategory(${c.id}, ${!c.is_active})">` +
+               `${c.is_active ? "Deactivate" : "Activate"}</button>` +
+               `<button class="btn btn-sm btn-danger" data-approve onclick="deleteCategory(${c.id})">Delete</button></span>`
+    }));
+    const el = document.getElementById("cat-table");
+    if (el && window.UI.renderTable) {
+      window.UI.renderTable(el, rows, [
+        {key: "name", label: "Category"},
+        {key: "parent", label: "Under"},
+        {key: "products", label: "Products"},
+        {key: "status", label: "Status"},
+        {key: "actions", label: "Actions"}
+      ]);
+    }
+  }
+
+  window.loadCategories = async function () {
+    try {
+      allCategories = await window.UI.api("/product-categories") || [];
+    } catch (e) { console.error("Categories", e); allCategories = []; }
+    loadHsnPickers();
+    const pf = document.getElementById("prod-cat-filter");
+    const wanted = pf ? pf.value : "";
+    categoryOptions(pf, {blankLabel: "All categories"});
+    if (pf) pf.value = wanted;                     // keep the user's filter
+    categoryOptions(document.getElementById("prod-cat"), {includeNew: true, activeOnly: true});
+    const psel = document.getElementById("prod-cat");
+    if (psel && psel.value === NEW_CAT) psel.value = "";
+    const parent = document.getElementById("cat-new-parent");
+    const keepParent = parent ? parent.value : "";
+    categoryOptions(parent, {blankLabel: "None (top level)"});
+    if (parent) parent.value = keepParent;
+    renderCategoryTable();
+  };
+
+  // Curated HSN picker lists for the product and raw-material forms.
+  // Fetched once; a failure just leaves both boxes as free-text inputs.
+  let hsnLoaded = false;
+  function fillHsnList(id, codes) {
+    const dl = document.getElementById(id);
+    if (!dl) return;
+    dl.innerHTML = (codes || []).map(c =>
+      `<option value="${escAdj(c.code)}">${escAdj(c.code)} \u2014 ${escAdj(c.name)}</option>`).join("");
+  }
+  async function loadHsnPickers() {
+    if (hsnLoaded) return;
+    try {
+      const d = await window.UI.api("/hsn-codes") || {};
+      fillHsnList("hsn-product-list", d.products || []);
+      fillHsnList("hsn-raw-list", d.raw_materials || []);
+      hsnLoaded = true;
+    } catch (e) { console.error("HSN", e); }
+  }
+
+  // Name -> HSN auto-suggest: as the name is typed, ask the server once and
+  // fill an EMPTY hsn box. Anything already picked or typed always wins,
+  // and no match leaves the box alone - a wrong code is worse than a blank.
+  function wireHsnSuggest(nameId, hsnId, type) {
+    const nameEl = document.getElementById(nameId), hsnEl = document.getElementById(hsnId);
+    if (!nameEl || !hsnEl || nameEl.dataset.hsnwired) return;
+    nameEl.dataset.hsnwired = "1";
+    let t = null;
+    // Last code filled by the suggester (not the user). A code the user
+    // typed by hand is never overwritten; an auto-filled one is refreshed
+    // when the name changes instead of sticking forever.
+    let lastAuto = "";
+    hsnEl.addEventListener("input", () => {
+      if (!(hsnEl.value || "").trim()) lastAuto = "";
+    });
+    nameEl.addEventListener("input", () => {
+      clearTimeout(t);
+      t = setTimeout(async () => {
+        const q = (nameEl.value || "").trim();
+        if (q.length < 3) return;
+        const cur = (hsnEl.value || "").trim();
+        if (cur && cur !== lastAuto) return;
+        try {
+          const d = await window.UI.api(
+            "/hsn-codes/suggest?type=" + type + "&name=" + encodeURIComponent(q));
+          if ((nameEl.value || "").trim() !== q) return;
+          const now = (hsnEl.value || "").trim();
+          if (d && d.code && (!now || now === lastAuto)) { hsnEl.value = d.code; lastAuto = d.code; }
+        } catch (e) { /* suggestion is best-effort */ }
+      }, 400);
+    });
+  }
+
+  function catMsg(text, isError) {
+    const el = document.getElementById("cat-msg");
+    if (el) {
+      el.textContent = text;
+      el.style.color = isError ? "var(--color-danger)" : "var(--color-success)";
+    }
+  }
+
+  window.addCategory = async function () {
+    const name = (document.getElementById("cat-new-name").value || "").trim();
+    if (!name) { catMsg("Type a category name first.", true); return; }
+    const parent = document.getElementById("cat-new-parent").value;
+    try {
+      await window.UI.api("/product-categories", {
+        method: "POST",
+        body: {name: name, parent_id: parent ? Number(parent) : null}
+      });
+      document.getElementById("cat-new-name").value = "";
+      await window.loadCategories();
+      await window.loadProducts();
+      catMsg(`Added "${name}".`, false);
+    } catch (e) { catMsg(e.message || String(e), true); }
+  };
+
+  window.renameCategory = async function (id) {
+    const cat = allCategories.find(c => c.id === id);
+    if (!cat) return;
+    window.UI.promptDialog("Rename category", "Category name", cat.name, async (name) => {
+      try {
+        await window.UI.api(`/product-categories/${id}`, {method: "PUT", body: {name: name}});
+        await window.loadCategories();
+        await window.loadProducts();
+        catMsg(`Renamed to "${name}".`, false);
+      } catch (e) { catMsg(e.message || String(e), true); }
+    });
+  };
+
+  window.toggleCategory = async function (id, active) {
+    try {
+      await window.UI.api(`/product-categories/${id}`, {method: "PUT", body: {is_active: active}});
+      await window.loadCategories();
+      await window.loadProducts();
+      catMsg(active ? "Category activated." : "Category deactivated.", false);
+    } catch (e) { catMsg(e.message || String(e), true); }
+  };
+
+  window.deleteCategory = async function (id) {
+    const cat = allCategories.find(c => c.id === id);
+    if (!cat) return;
+    window.UI.confirmDialog("Delete category", `Delete category "${cat.name}"? This cannot be undone.`, async () => {
+      try {
+        await window.UI.api(`/product-categories/${id}`, {method: "DELETE"});
+        await window.loadCategories();
+        await window.loadProducts();
+        catMsg(`Deleted "${cat.name}".`, false);
+      } catch (e) { catMsg(e.message || String(e), true); }
+    });
+  };
+
+  // Per-size packet balances for the expandable stock breakdown below.
+  // Keyed by product id; filled by loadStock() from /finished-stock/balance.
+  let stockSizesByProduct = {};
+
+  // Packets per pack size for one product. A bare packet total is meaningless
+  // without the pack size beside it (120 packets of 50g is not 120 packets
+  // of 1kg), so the breakdown lists each size that has actually moved.
+  function stockSizesHtml(pid) {
+    const rows = (stockSizesByProduct[pid] || []).filter(r =>
+      r.stock_kg || r.sold_kg || r.balance_kg);
+    if (!rows.length) return "";
+    return rows.map(r => {
+      const pk = Math.round((r.balance_packets || 0) * 100) / 100;
+      const kg = Math.round((r.balance_kg || 0) * 100) / 100;
+      const t = `${escAdj(r.size_name || "—")}: ${pk} pkts (${kg} kg)`;
+      return `<div${(pk < 0 || kg < 0) ? ' style="color:var(--color-danger); font-weight:600;"' : ""}>${t}</div>`;
+    }).join("");
+  }
+
+  window.toggleStockSizes = function (pid, btn) {
+    const box = document.getElementById("stock-sizes-" + pid);
+    if (!box) return;
+    const open = box.style.display !== "none";
+    box.style.display = open ? "none" : "block";
+    if (btn) btn.textContent = open ? "sizes ▸" : "sizes ▾";
+  };
+
+  function stockText(pid) {
+    const s = stockByProduct[pid];
+    // No stock record means nothing ever moved: the balance is genuinely
+    // zero, so show 0 (muted, to signal "no movements yet") rather than "—".
+    const pkts = Math.round(((s && s.total_packets) || 0) * 100) / 100;
+    const kg = Math.round(((s && s.total_kg) || 0) * 100) / 100;
+    const text = pkts + " pkts (" + kg + " kg)";
+    let total;
+    if (pkts < 0 || kg < 0) {
+      total = `<span style="color:var(--color-danger); font-weight:600;">${text}</span>`;
+    } else if (!s) {
+      total = `<span style="color:var(--color-text-muted);" title="No stock movements recorded yet">${text}</span>`;
+    } else {
+      total = text;
+    }
+    const detail = stockSizesHtml(pid);
+    if (!detail) return total;
+    return `${total} <button class="btn btn-sm btn-secondary" type="button" onclick="toggleStockSizes(${pid}, this)" title="Show packets per pack size" style="margin-left:6px;">sizes ▸</button>` +
+      `<div id="stock-sizes-${pid}" style="display:none; margin-top:6px; font-size:12px; color:var(--color-text-muted);">${detail}</div>`;
+  }
+
+  // Removed pack sizes stay out of every picker and listing; history on
+  // issued documents keeps resolving by id server-side regardless.
+  function activeSizes(p) { return ((p && p.packaging_sizes) || []).filter(ps => ps.is_active !== false); }
+
+  function renderProductTable(list) {
+    const rows = (list || []).map(p => {
+      const sizes = activeSizes(p);
+      // Price varies by pack size, so show each size with its own rate instead
+      // of a single number for the whole product.
+      const rateList = sizes.length
+        ? sizes.map(ps => (Number(ps.rate_per_kg) > 0 ? ps.rate_per_kg : "—")).join(" · ")
+        : (p.base_rate_per_kg || "—");
+      const rateTip = sizes.length
+        ? sizes.map(ps => ps.size_name + ": " +
+            (Number(ps.rate_per_kg) > 0 ? ps.rate_per_kg + "/kg" : "not set")).join("   ")
+        : "product base rate";
+      return {
+        id: p.id,
+        name: p.name || p.name,
+        category: p.category || p.category || "—",
+        rate: `<span title="${escAttr(rateTip)}">${rateList}</span>`,
+        gst: Number(p.gst_rate) > 0
+          ? Number(p.gst_rate) + "%"
+          : `<span class="badge badge-warning" title="Tax invoices cannot be created for this product until a GST rate is set. Open Edit and set it.">not set</span>`,
+        packaging: sizes.length ? sizes.map(ps => ps.size_name || "—").join(", ") : "—",
+        stock: stockText(p.id),
+        actions: `<span class="row-actions"><button class="btn btn-sm btn-warn" onclick="editProd(${p.id})">Edit</button><button class="btn btn-sm btn-tool" onclick="editProductHelp(${p.id})" title="Free-text help/recipe kept for this product">Help</button><button class="btn btn-sm btn-opening" onclick="addOpening(${p.id})" title="Set opening packets for this product">Opening</button><button class="btn btn-sm btn-workflow" data-approve onclick="editWorkflow(${p.id})" title="Choose which production stages this product goes through">Workflow</button><button class="btn btn-sm btn-danger" onclick="deleteProd(${p.id})">Delete</button></span>`
+      };
+    });
+    const container = document.getElementById("prod-table");
+    if (container && window.UI.renderTable) {
+        window.UI.renderTable(container, rows, [{key:"name",label:"Product"},{key:"packaging",label:"Packaging"},{key:"category",label:"Category"},{key:"rate",label:"Rate/kg by size"},{key:"gst",label:"GST"},{key:"stock",label:"Stock (packets)"},{key:"actions",label:"Actions"}], { pageSize: 15 });
+    }
+    const count = document.getElementById("prod-count");
+    if (count) count.textContent = "Showing " + rows.length + " of " + allProducts.length + " products";
+  }
+
+  window.resetProductFilters = function () {
+    document.getElementById("prod-search").value = "";
+    document.getElementById("prod-cat-filter").value = "";
+    window.filterProducts();
+  };
+
+  window.filterProducts = function () {
+    const q = (document.getElementById("prod-search").value || "").trim().toLowerCase();
+    const catSel = document.getElementById("prod-cat-filter");
+    const catId = catSel ? catSel.value : "";
+    let list = allProducts;
+    if (catId) list = list.filter(p => String(p.category_id) === String(catId));
+    if (q) {
+      list = list.filter(p => [p.name, p.category,
+          activeSizes(p).map(ps => ps.size_name).join(" ")]
+        .map(v => String(v == null ? "" : v).toLowerCase()).some(v => v.includes(q)));
+    }
+    renderProductTable(list);
+  };
+
+  async function loadStock() {
+    try {
+      const data = await window.UI.api("/finished-stock");
+      stockByProduct = {};
+      (data || []).forEach(s => { stockByProduct[s.product_id] = s; });
+    } catch (e) { console.error("Stock", e); stockByProduct = {}; }
+    // One bulk call for every pack size (same payload the dashboard card
+    // uses), grouped by product for the expandable per-size breakdown.
+    try {
+      const d = await window.UI.api("/finished-stock/balance");
+      stockSizesByProduct = {};
+      ((d && d.rows) || []).forEach(r => {
+        (stockSizesByProduct[r.product_id] = stockSizesByProduct[r.product_id] || []).push(r);
+      });
+    } catch (e) { console.error("Stock sizes", e); stockSizesByProduct = {}; }
+  }
+
+  // Suggestions for the Product Name field: every already-added product, so
+  // an existing name can be picked (the size then attaches to it) or a brand
+  // new name typed. Refreshed on every load, including after a save.
+  function renderProdNameSuggestions() {
+    const dl = document.getElementById("prod-name-list");
+    if (!dl) return;
+    dl.innerHTML = (allProducts || []).map(p => `<option value="${escAdj(p.name || "")}"></option>`).join("");
+  }
+
+  // Suggestions for both Size Name fields (Add Product form and the size
+  // editor): every pack size already added on any product. Shared datalist,
+  // refreshed wherever the product list refreshes, so a size added or
+  // removed anywhere shows up everywhere without a page reload.
+  function renderPackSizeSuggestions() {
+    const dl = document.getElementById("pack-size-list");
+    if (!dl) return;
+    const seen = {};
+    (allProducts || []).forEach(p => {
+      activeSizes(p).forEach(s => {
+        if (s && s.size_name) seen[String(s.size_name)] = true;
+      });
+    });
+    dl.innerHTML = Object.keys(seen).sort().map(n => `<option value="${escAdj(n)}"></option>`).join("");
+  }
+
+  async function loadProducts() {
+    try {
+      await window.loadCategories();
+      const data = await window.UI.api("/products");
+      allProducts = data || [];
+      renderProdNameSuggestions();
+      renderPackSizeSuggestions();
+      if (window.UI && window.UI.bindSizeWeightAuto) {
+        window.UI.bindSizeWeightAuto(document.getElementById("pack-size"), document.getElementById("pack-weight"));
+        window.UI.bindSizeWeightAuto(document.getElementById("as-size"), document.getElementById("as-weight"));
+        if (window.UI.fixLooseWeight) {
+          window.UI.fixLooseWeight(document.getElementById("pack-size"), document.getElementById("pack-weight"));
+          window.UI.fixLooseWeight(document.getElementById("as-size"), document.getElementById("as-weight"));
+        }
+        wirePouchDefault();
+      }
+      await loadStock();
+      window.filterProducts();
+    } catch (e) { console.error("Products", e); document.getElementById("prod-table").innerHTML = "<p>Failed to load.</p>"; }
+  }
+
+  // Exposed for the category actions below (add/rename/toggle/delete),
+  // which refresh the whole page state through the global scope.
+  window.loadProducts = loadProducts;
+
+  // Display-only rounding: stock figures can carry long float tails from
+  // arithmetic (e.g. 12.3456789 kg). The screen never shows more than 2
+  // decimals; stored values keep full precision.
+  const fmtQty2 = n => (n === null || n === undefined || n === "" || isNaN(parseFloat(n)) ? "—"
+    : (Math.round(parseFloat(n) * 100) / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 }));
+
+  // (Raw-material categories, the raw stock table and raw CRUD moved to
+  // the raw-materials page with the rest of the raw section.)
+
+  // Material names for the formulation picker only (the raw stock table
+  // lives on the raw-materials page).
+  async function loadRawNames() {
+    try {
+      allRaw = await window.UI.api("/raw-materials") || [];
+    } catch (e) { console.error("Raw names", e); allRaw = []; }
+  }
+
+  // A pack size with no rate of its own is priced from the product's fallback
+  // rate, silently. That fallback is easy to forget about, so call it out by
+  // name whenever one exists.
+  function zeroRateSizes(sizes) {
+    return (sizes || []).filter(function (s) { return !(Number(s.rate_per_kg) > 0); });
+  }
+
+  function zeroRateWarning(product) {
+    var names = zeroRateSizes(activeSizes(product));
+    if (!names.length) return "";
+    var fb = Number(product.base_rate_per_kg) > 0
+      ? "the fallback rate of " + product.base_rate_per_kg + "/kg"
+      : "no rate at all (0)";
+    return (names.length === 1 ? "Pack size " : "Pack sizes ") +
+      names.map(function (s) { return '"' + s.size_name + '"'; }).join(", ") +
+      (names.length === 1 ? " has" : " have") + " no rate of its own, so " + fb +
+      " will be used when it is sold. Set a rate on it to avoid that.";
+  }
+
+  function noteZeroRates(msgEl, product) {
+    var warn = zeroRateWarning(product);
+    if (!warn) return false;
+    msgEl.textContent = (msgEl.textContent ? msgEl.textContent + "  " : "") + warn;
+    msgEl.style.color = "var(--color-warning)";
+    return true;
+  }
+
+  // Turn a category <select> into what the API expects: an id when one is
+  // chosen, a new name when the user is creating one, and null for neither.
+  function categoryPayload(selId, newId) {
+    const sel = document.getElementById(selId);
+    const val = sel ? sel.value : "";
+    if (val === NEW_CAT) {
+      const nm = (document.getElementById(newId).value || "").trim();
+      return {category_id: null, category: nm || null};
+    }
+    if (!val) return {category_id: null, category: null};
+    return {category_id: Number(val), category: null};
+  }
+
+  window.createProduct = async function (event) {
+    if (event) event.preventDefault();
+    const __release = window.UI.submitGuard(event);
+    if (!__release) return;
+    const size = {
+      size_name: document.getElementById("pack-size").value || "Loose",
+      weight_in_kg: parseFloat(document.getElementById("pack-weight").value) || 1,
+      rate_per_kg: parseFloat(document.getElementById("pack-rate").value) || 0,
+      packets_per_unit: 1,
+      opening_packets: parseFloat(document.getElementById("pack-opening").value) || 0,
+    };
+    // A blank pouch box means "use the size's default" on the server; typing
+    // 0 is a deliberate "no wrapper for this size", so 0 is sent as 0.
+    const pouchBox = document.getElementById("pack-pouch");
+    if (pouchBox && pouchBox.value.trim() !== "") {
+      size.wrapper_weight_kg = Math.max(0, parseFloat(pouchBox.value) || 0) / 1000;
+    }
+    const wrapBox = document.getElementById("pack-wrapper");
+    if (wrapBox && wrapBox.value) size.wrapper_material_id = parseInt(wrapBox.value, 10);
+    const payload = {
+      name: document.getElementById("prod-name").value,
+      ...categoryPayload("prod-cat", "prod-cat-new"),
+      base_rate_per_kg: parseFloat(document.getElementById("prod-rate").value) || 0,
+      gst_rate: parseFloat(document.getElementById("prod-gst").value) || 0,
+      packaging_sizes: [size]
+    };
+    try {
+      const res = await fetch("/products", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+      // A name that already exists attaches the weight to that product rather
+      // than creating a duplicate, so say which actually happened.
+      const msgEl = document.getElementById("prod-msg");
+      if (data.merged_into_existing) {
+        const added = data.sizes_added || [];
+        const skipped = data.sizes_skipped || [];
+        let text = "Added to existing product \"" + data.name + "\"";
+        if (added.length) text += ": " + added.join(", ");
+        if (skipped.length) text += (added.length ? ". " : "") +
+          "Already present, skipped: " + skipped.join(", ");
+        msgEl.textContent = text;
+      } else {
+        msgEl.textContent = "Product saved with packaging.";
+      }
+      msgEl.style.color = "var(--color-success)";
+      // A size saved with no rate will quietly be priced from the fallback
+      // rate, so say so rather than let it surprise someone at invoicing time.
+      noteZeroRates(msgEl, data);
+      document.getElementById("prod-form").style.display = "none";
+      document.getElementById("new-prod-form").reset();
+      loadProducts();
+      __release();
+    } catch (e) {
+      document.getElementById("prod-msg").textContent = (e.message || "Error");
+      document.getElementById("prod-msg").style.color = "var(--color-danger)";
+      __release();
+    }
+  };
+
+  window.addOpening = function (id) {
+    const prod = (allProducts || []).find(p => p.id === id);
+    if (!prod) { alert("Product not found."); return; }
+    openOpeningModal(prod);
+  };
+
+  window.deleteProd = async function (id) {
+    if (!confirm("Delete this product?")) return;
+    try {
+      // UI.api carries the auth token; a bare fetch does not and the server
+      // answers 401, so deletes used to fail silently every time.
+      await window.UI.api("/products/" + id, { method: "DELETE" });
+      document.getElementById("prod-msg").textContent = "Product deleted.";
+      document.getElementById("prod-msg").style.color = "var(--color-success)";
+      loadProducts();
+    } catch (e) {
+      document.getElementById("prod-msg").textContent = (e && e.message) || "Delete failed.";
+      document.getElementById("prod-msg").style.color = "var(--color-danger)";
+    }
+  };
+
+  // Display-only weight: at most 2 decimals ("0.05000" -> "0.05").
+  // data-weight attributes and saved values keep full precision.
+  function fmtW2(n) {
+    const v = parseFloat(n);
+    if (isNaN(v)) return "—";
+    return String(Math.round(v * 1000) / 1000);
+  }
+
+  // Display-only pouch grams: stored kilograms ("0.006") read as grams ("6").
+  function fmtPouchG(n) {
+    const v = parseFloat(n);
+    if (isNaN(v)) return "0";
+    return String(Math.round(v * 1000 * 10) / 10);
+  }
+
+  // Empty-pouch weight in grams per pack size. Mirrors _DEFAULT_POUCH_KG in
+  // backend/main.py; kept here so the box fills as you type instead of after
+  // a save. Unlisted sizes stay blank - the person decides, we do not guess.
+  const POUCH_G_BY_SIZE = { 7: 2, 50: 4, 100: 6, 175: 6, 200: 8, 250: 8, 400: 10, 500: 10 };
+  const LOOSE_POUCH_G = 14;
+
+  function pouchForGrams(grams) {
+    return Object.prototype.hasOwnProperty.call(POUCH_G_BY_SIZE, grams)
+      ? POUCH_G_BY_SIZE[grams]
+      : null;
+  }
+
+  function defaultPouchG(sizeName, weightKg) {
+    const name = String(sizeName || "");
+    if (name.toLowerCase().indexOf("loose") >= 0) return LOOSE_POUCH_G;
+    // The weight is what the server keys the default on, so it wins when it is
+    // there; the size label is only a fallback for the moment before it is
+    // typed ("50g" already means 4 grams).
+    const kg = parseFloat(weightKg);
+    if (isFinite(kg) && kg > 0) {
+      const byWeight = pouchForGrams(Math.round(kg * 1000));
+      if (byWeight != null) return byWeight;
+    }
+    const m = /^\s*(\d+(?:\.\d+)?)\s*(kg|g|gm|gram|grams)?\s*$/i.exec(name);
+    if (m) {
+      const n = parseFloat(m[1]);
+      const unit = (m[2] || "g").toLowerCase();
+      return pouchForGrams(Math.round(unit === "kg" ? n * 1000 : n));
+    }
+    return null;
+  }
+
+  // Fill the pouch box unless the person has typed their own number into it
+  // (data-auto="0"). One guard, two forms: new product and add-size.
+  function syncPouchBox(pouchId, sizeId, weightId) {
+    const pouch = document.getElementById(pouchId);
+    if (!pouch || pouch.dataset.auto === "0") return;
+    const sizeEl = document.getElementById(sizeId);
+    const weightEl = document.getElementById(weightId);
+    const g = defaultPouchG(sizeEl ? sizeEl.value : "", weightEl ? weightEl.value : "");
+    pouch.value = g == null ? "" : g;
+  }
+  window.syncPouchFromSize = function () {
+    syncPouchBox("as-pouch", "as-size", "as-weight");
+  };
+  window.syncProductPouch = function () {
+    syncPouchBox("pack-pouch", "pack-size", "pack-weight");
+  };
+
+  // Wrapper rolls are ordinary raw materials; they are stocked in kg and
+  // bought like anything else. Packaging-category materials come first
+  // because that is where the printed film lives, but the rest stay listed:
+  // a roll filed under another category must still be selectable.
+  function wrapperOptionsHtml(selectedId) {
+    const list = (allRaw || []).filter(m => m.is_active !== false);
+    const pack = [], rest = [];
+    list.forEach(m => {
+      const cat = String(m.category || "").toLowerCase();
+      (cat.indexOf("pack") >= 0 ? pack : rest).push(m);
+    });
+    const rows = group => window.UI.sortByName(group).map(m =>
+      `<option value="${m.id}"${String(m.id) === String(selectedId || "") ? " selected" : ""}>${escAdj(m.name)}</option>`
+    ).join("");
+    let html = '<option value="">No wrapper roll</option>';
+    if (pack.length) html += `<optgroup label="Packaging">${rows(pack)}</optgroup>`;
+    if (rest.length) html += `<optgroup label="Other raw materials">${rows(rest)}</optgroup>`;
+    return html;
+  }
+
+  // Both wrapper dropdowns are outside the per-size table, so they are filled
+  // once the material list arrives (and again when the editor opens).
+  function refreshWrapperSelects() {
+    const asSel = document.getElementById("as-wrapper");
+    if (asSel) {
+      const keep = asSel.value;
+      asSel.innerHTML = wrapperOptionsHtml(keep);
+      if (keep) asSel.value = keep;
+    }
+    const newSel = document.getElementById("pack-wrapper");
+    if (newSel) {
+      const keep = newSel.value;
+      newSel.innerHTML = wrapperOptionsHtml(keep);
+      if (keep) newSel.value = keep;
+    }
+    const sizeSel = document.getElementById("pack-size");
+    if (sizeSel && sizeSel.value) window.syncProductPouch();
+  }
+  window.refreshWrapperSelects = refreshWrapperSelects;
+
+  // Real editor: product fields plus a row per packaging size, because a
+  // product's price is per pack size rather than a single number.
+  window.editProd = async function (id) {
+    const panel = document.getElementById("size-editor");
+    const msg = document.getElementById("size-msg");
+    if (window.UI && window.UI.resetDraggable) {
+      window.UI.resetDraggable(panel.querySelector(".modal-card"));
+    }
+    wireEditorDismiss("size-editor", "closeSizeEditor");
+    panel.style.display = "flex";
+    panel.dataset.productId = id;
+    refreshWrapperSelects();
+    msg.textContent = "Loading…";
+    msg.style.color = "var(--color-text-muted)";
+    try {
+      const data = await window.UI.api("/products");
+      const p = (data || []).find(x => x.id === id);
+      if (!p) throw new Error("Product not found");
+      document.getElementById("se-name").value = p.name || "";
+      categoryOptions(document.getElementById("se-cat"),
+                      {includeNew: true, selectedId: p.category_id});
+      document.getElementById("se-base-rate").value = p.base_rate_per_kg != null ? p.base_rate_per_kg : "";
+      document.getElementById("se-gst").value = p.gst_rate != null ? p.gst_rate : 0;
+      document.getElementById("se-hsn").value = p.hsn_code || "";
+      document.getElementById("as-name").value = p.name || "";
+      const sizes = (p.packaging_sizes || []).filter(ps => ps.is_active !== false);
+      document.getElementById("se-sizes").innerHTML = sizes.length
+        ? sizes.map(ps => `
+          <tr>
+            <td><input type="text" id="se-sn-${ps.id}" value="${escAdj(ps.size_name)}" style="width:90px;" /></td>
+            <td><div style="display:flex; align-items:center; gap:4px;"><input type="number" step="0.001" min="0" id="se-sw-${ps.id}" value="${fmtW2(ps.weight_in_kg)}" style="width:70px;" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">kg</span></div></td>
+            <td><div style="display:flex; align-items:center; gap:4px;"><input type="number" step="0.01" min="0" id="se-sr-${ps.id}" value="${escAdj(ps.rate_per_kg)}" style="width:80px;" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">/kg</span></div></td>
+            <td><input type="number" step="1" min="1" id="se-sp-${ps.id}" value="${escAdj(ps.packets_per_unit == null ? 1 : ps.packets_per_unit)}" style="width:70px;" /></td>
+            <td><input type="number" step="1" min="0" id="se-st-${ps.id}" value="${escAdj(ps.threshold_packets == null ? 0 : ps.threshold_packets)}" style="width:70px;" title="Warn when stock falls to this many packets" /></td>
+            <td><input type="number" step="0.1" min="0" id="se-sw2-${ps.id}" value="${escAdj(fmtPouchG(ps.wrapper_weight_kg))}" style="width:70px;" title="Empty pouch weight in grams, counted as raw-material input on production" /></td>
+<td><select id="se-wm-${ps.id}" style="min-width:160px;" title="Which raw material (film roll) this size is pouched from">${wrapperOptionsHtml(ps.wrapper_material_id)}</select></td>
+            <td><span class="row-actions"><button class="btn btn-sm btn-primary" onclick="saveSize(${ps.id})">Save</button><button class="btn btn-sm btn-danger" onclick="removeSize(${ps.id})">Remove</button><button class="btn btn-sm btn-tool" onclick="sizeRateHistory(${ps.id})" title="Who changed this rate and when">History</button></span></td>
+          </tr>`).join("")
+        : `<tr><td colspan="8" style="font-size:12px;color:var(--color-text-muted);">No packaging sizes yet — add one below.</td></tr>`;
+      msg.textContent = "Editing \"" + p.name + "\". Change a rate and press Save.";
+      msg.style.color = "var(--color-text-muted)";
+      const warnBox = document.getElementById("se-rate-warning");
+      const warn = zeroRateWarning(p);
+      if (warnBox) {
+        warnBox.textContent = warn;
+        warnBox.style.display = warn ? "block" : "none";
+      }
+      loadFormulation();
+      loadRecipeSources();
+    } catch (e) {
+      msg.textContent = e.message || "Failed to load product.";
+      msg.style.color = "var(--color-danger)";
+    }
+  };
+
+  window.saveProductDetails = async function () {
+    const id = Number(document.getElementById("size-editor").dataset.productId);
+    const msg = document.getElementById("size-msg");
+    try {
+      await window.UI.api("/products/" + id, {
+        method: "PUT",
+        body: {
+          name: document.getElementById("se-name").value,
+          ...categoryPayload("se-cat", "se-cat-new"),
+          base_rate_per_kg: parseFloat(document.getElementById("se-base-rate").value) || 0,
+      gst_rate: parseFloat(document.getElementById("se-gst").value) || 0,
+      hsn_code: (document.getElementById("se-hsn").value || "").trim() || null,
+        },
+      });
+      msg.textContent = "Product details saved.";
+      msg.style.color = "var(--color-success)";
+      await loadProducts();
+    } catch (e) {
+      msg.textContent = e.message || "Save failed.";
+      msg.style.color = "var(--color-danger)";
+    }
+  };
+
+  // One-click recipe copy: fill this product's mix from another product's
+  // saved formulation. The product list carries no has-recipe flag, so
+  // sources are probed when the editor opens; a failed probe just hides
+  // that source. Saving still goes through saveFormulation below, so
+  // Editor Mode and role rules apply unchanged.
+  let recipeSources = [];
+
+  async function loadRecipeSources() {
+    const pid = Number(document.getElementById("size-editor").dataset.productId);
+    const sel = document.getElementById("copy-recipe-from");
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Select a product with a recipe…</option>';
+    recipeSources = [];
+    const others = ((typeof allProducts !== "undefined" && allProducts) || [])
+      .filter(p => Number(p.id) !== pid);
+    const found = await Promise.all(others.map(async p => {
+      try {
+        const d = await window.UI.api("/products/" + p.id + "/formulation");
+        if (d && d.items && d.items.length) {
+          return { id: p.id, name: p.name, items: d.items, steps: d.steps || [] };
+        }
+      } catch (e) { /* a failed probe just hides that source */ }
+      return null;
+    }));
+    recipeSources = window.UI.sortByName(found.filter(Boolean));
+    recipeSources.forEach(s => {
+      const o = document.createElement("option");
+      o.value = String(s.id);
+      o.textContent = `${s.name} (${s.items.length} ingredients)`;
+      sel.appendChild(o);
+    });
+    if (window.UI.quickSelect) window.UI.quickSelect(sel, "Type product…");
+  }
+
+  window.applyCopiedRecipe = function () {
+    const sel = document.getElementById("copy-recipe-from");
+    const msg = document.getElementById("se-form-msg");
+    const src = recipeSources.find(s => String(s.id) === (sel ? sel.value : ""));
+    if (!src) {
+      msg.textContent = "Pick a recipe to copy first.";
+      msg.style.color = "var(--color-danger)";
+      return;
+    }
+    const hasRows = [...document.querySelectorAll("#se-formulation tr")]
+      .some(tr => tr.querySelector(".se-fmat"));
+    if (hasRows && !confirm(
+      `Replace the current ingredients with "${src.name}"'s recipe (${src.items.length} ingredients)?`
+    )) return;
+    // Same database, so ids usually match outright; fall back to name, and
+    // skip (loudly) anything missing rather than failing the whole copy.
+    const byId = {}, byName = {};
+    ((typeof allRaw !== "undefined" && allRaw) || []).forEach(m => {
+      byId[String(m.id)] = m;
+      byName[String(m.name || "").toLowerCase()] = m;
+    });
+    document.getElementById("se-formulation").innerHTML = "";
+    document.getElementById("se-form-steps").innerHTML = "";
+    let copied = 0;
+    const skipped = [];
+    src.items.forEach(it => {
+      let mat = byId[String(it.raw_material_id)] || null;
+      if (!mat && it.material_name) mat = byName[String(it.material_name).toLowerCase()] || null;
+      if (!mat) { skipped.push(it.material_name || ("#" + it.raw_material_id)); return; }
+      window.addFormulationRow({ raw_material_id: mat.id, percentage: it.percentage });
+      copied++;
+    });
+    (src.steps || []).forEach(s => window.addFormulationStep({
+      stage: String(s.stage || "").toLowerCase(), instruction: s.instruction,
+    }));
+    window.renumberFormSteps();
+    window.updateFormTotal();
+    msg.textContent = `Copied ${copied} ingredients from "${src.name}"` +
+      (skipped.length ? ` (${skipped.length} skipped — not in raw materials: ${skipped.join(", ")}).` : ". Tweak, then Save formulation.");
+    msg.style.color = skipped.length ? "var(--color-warning)" : "var(--color-success)";
+  };
+
+  // Formulation (mix ratio): ingredient rows with a live 100% total and an
+  // indicative cost at today's purchase rates. Saved via PUT like the other
+  // product edits, so Editor Mode and role rules apply unchanged.
+  window.addFormulationRow = function (preset) {
+    const tb = document.getElementById("se-formulation");
+    // Drop the "no formulation yet" placeholder the first time a row appears.
+    if (tb.querySelector("td[colspan]")) tb.innerHTML = "";
+    const tr = document.createElement("tr");
+    const mats = window.UI.sortByName((typeof allRaw !== "undefined" && allRaw) || []);
+    const opts = '<option value="">Select…</option>' + mats.map(m =>
+      `<option value="${m.id}" data-rate="${m.purchase_rate || 0}"` +
+      `${preset && Number(preset.raw_material_id) === Number(m.id) ? " selected" : ""}>` +
+      `${escAdj(m.name)} (${escAdj(m.unit || "kg")})</option>`).join("");
+    tr.innerHTML =
+      `<td><select class="se-fmat" onchange="updateFormTotal()">${opts}</select></td>` +
+      `<td><input class="se-fpct" type="number" step="0.01" min="0" max="100" style="width:80px;" value="${preset && preset.percentage != null ? escAdj(preset.percentage) : ""}" oninput="updateFormTotal()" /></td>` +
+      `<td class="se-frate" style="font-size:13px; white-space:nowrap;">—</td>` +
+      `<td><button class="btn btn-sm btn-danger" type="button" onclick="this.closest('tr').remove(); updateFormTotal();">✕</button></td>`;
+    tb.appendChild(tr);
+    updateFormTotal();
+  };
+
+  window.addFormulationStep = function (preset) {
+    const tb = document.getElementById("se-form-steps");
+    if (tb.querySelector("td[colspan]")) tb.innerHTML = "";
+    const n = tb.querySelectorAll("tr").length + 1;
+    const tr = document.createElement("tr");
+    const st = (preset && preset.stage) || "";
+    const sel = ["roasting", "grinding", "mixing", "packaging"].map(s =>
+      `<option value="${s}"${st === s ? " selected" : ""}>${s[0].toUpperCase() + s.slice(1)}</option>`
+    ).join("");
+    tr.innerHTML =
+      `<td style="color:var(--color-text-muted);">${n}</td>` +
+      `<td><select class="se-fstage"><option value="">—</option>${sel}</select></td>` +
+      `<td><input class="se-fins" type="text" style="width:100%; min-width:220px;" placeholder="e.g. Roast at 120°C for 20 min, then cool" value="${preset && preset.instruction ? escAdj(preset.instruction) : ""}" /></td>` +
+      `<td><button class="btn btn-sm btn-danger" type="button" onclick="this.closest('tr').remove(); renumberFormSteps();">✕</button></td>`;
+    tb.appendChild(tr);
+  };
+
+  window.renumberFormSteps = function () {
+    document.querySelectorAll("#se-form-steps tr").forEach((tr, i) => {
+      const first = tr.querySelector("td");
+      if (first && !tr.querySelector("td[colspan]")) first.textContent = i + 1;
+    });
+  };
+
+  window.updateFormTotal = function () {
+    let total = 0, cost = 0;
+    document.querySelectorAll("#se-formulation tr").forEach(tr => {
+      const mat = tr.querySelector(".se-fmat");
+      const pctEl = tr.querySelector(".se-fpct");
+      if (!mat || !mat.value) return;
+      const pct = parseFloat(pctEl ? pctEl.value : 0) || 0;
+      total += pct;
+      const opt = mat.selectedOptions ? mat.selectedOptions[0] : null;
+      const rate = parseFloat(opt && opt.dataset ? opt.dataset.rate : 0) || 0;
+      cost += pct / 100 * rate;
+      const cell = tr.querySelector(".se-frate");
+      if (cell) cell.textContent = rate ? ("₹ " + rate + "/kg") : "—";
+    });
+    const totalEl = document.getElementById("se-form-total");
+    const ok = Math.abs(total - 100) <= 0.01;
+    totalEl.textContent = "Total: " + (Math.round(total * 100) / 100) + "%" + (ok ? " ✓" : " (need 100%)");
+    totalEl.style.color = ok ? "var(--color-success)" : "var(--color-danger)";
+    document.getElementById("se-form-cost").textContent = "≈ ₹ " + cost.toFixed(2) + "/kg";
+  };
+
+  async function loadFormulation() {
+    const pid = Number(document.getElementById("size-editor").dataset.productId);
+    const tb = document.getElementById("se-formulation");
+    const stb = document.getElementById("se-form-steps");
+    const msg = document.getElementById("se-form-msg");
+    tb.innerHTML = "";
+    stb.innerHTML = "";
+    if (msg) { msg.textContent = ""; }
+    try {
+      // Refresh the ingredient list: a raw material added on the Raw Materials
+      // page since this page loaded would be missing from the recipe rows.
+      await loadRawNames();
+      const d = await window.UI.api("/products/" + pid + "/formulation");
+      if (d && d.items && d.items.length) {
+        d.items.forEach(it => window.addFormulationRow(it));
+      } else {
+        tb.innerHTML = `<tr><td colspan="4" style="font-size:12px; color:var(--color-text-muted);">No formulation yet — add ingredients below. The ratio is a mixing reference; it never moves stock.</td></tr>`;
+      }
+      if (d && d.steps && d.steps.length) {
+        d.steps.forEach(s => window.addFormulationStep(s));
+      } else {
+        stb.innerHTML = `<tr><td colspan="4" style="font-size:12px; color:var(--color-text-muted);">No steps yet — add how this mix is made, in order.</td></tr>`;
+      }
+      updateFormTotal();
+    } catch (e) {
+      tb.innerHTML = `<tr><td colspan="4" style="font-size:12px; color:var(--color-danger);">Could not load formulation.</td></tr>`;
+    }
+  }
+
+  window.saveFormulation = async function () {
+    const pid = Number(document.getElementById("size-editor").dataset.productId);
+    const msg = document.getElementById("se-form-msg");
+    const items = [];
+    document.querySelectorAll("#se-formulation tr").forEach(tr => {
+      const mat = tr.querySelector(".se-fmat");
+      const pctEl = tr.querySelector(".se-fpct");
+      if (!mat || !mat.value) return;
+      items.push({
+        raw_material_id: parseInt(mat.value, 10),
+        percentage: parseFloat(pctEl ? pctEl.value : 0) || 0,
+      });
+    });
+    const steps = [];
+    document.querySelectorAll("#se-form-steps tr").forEach(tr => {
+      const stageEl = tr.querySelector(".se-fstage");
+      const insEl = tr.querySelector(".se-fins");
+      const instruction = (insEl ? insEl.value : "").trim();
+      if (!instruction) return;
+      steps.push({ stage: stageEl ? stageEl.value : "", instruction });
+    });
+    const total = items.reduce((a, it) => a + it.percentage, 0);
+    if (items.length && Math.abs(total - 100) > 0.01) {
+      msg.textContent = "Shares total " + (Math.round(total * 100) / 100) + "%, not 100% — adjust them to add up.";
+      msg.style.color = "var(--color-danger)";
+      return;
+    }
+    try {
+      msg.textContent = "Saving…";
+      msg.style.color = "var(--color-text-muted)";
+      const d = await window.UI.api("/products/" + pid + "/formulation",
+        { method: "PUT", body: { items, steps } });
+      msg.textContent = (d.items && d.items.length)
+        ? "Formulation saved (≈ ₹ " + parseFloat(d.estimated_cost_per_kg || 0).toFixed(2) + "/kg)."
+        : "Formulation cleared.";
+      msg.style.color = "var(--color-success)";
+      loadFormulation();
+    } catch (e) {
+      msg.textContent = e.message || "Save failed.";
+      msg.style.color = "var(--color-danger)";
+    }
+  };
+
+  // Convert Excel-pasted text (tab-separated cells, one row per line) into a
+  // <table>. First row becomes headers. Cell text is escaped so a pasted
+  // "<" can never break the markup the sanitizer allows.
+  function tsvToTable(tsv) {
+    const escCell = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const rows = String(tsv || "").replace(/\r\n?/g, "\n").split("\n").filter((r) => r.trim() !== "");
+    if (!rows.length) return "";
+    const cells = rows.map((r) => r.split("\t"));
+    const width = Math.max.apply(null, cells.map((c) => c.length));
+    let h = "<table>\n";
+    cells.forEach((c, i) => {
+      h += "<tr>";
+      for (let k = 0; k < width; k++) {
+        const v = escCell((c[k] || "").trim());
+        h += i === 0 ? "<th>" + v + "</th>" : "<td>" + v + "</td>";
+      }
+      h += "</tr>\n";
+    });
+    return h + "</table>";
+  }
+
+  // Product Help: one free-text document per product (recipe in plain
+  // words, process notes, anything else), kept manually in its own window.
+  // Independent of the structured ratio/steps; viewing needs no edit
+  // rights, saving goes through the usual PUT rules.
+  window.editProductHelp = async function (id) {
+    let d;
+    try {
+      d = await window.UI.api("/products/" + id + "/help");
+    } catch (e) {
+      window.UI.notify(e.message || "Could not load product help.", "error");
+      return;
+    }
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:200; display:flex; align-items:center; justify-content:center; padding:24px;";
+    overlay.innerHTML =
+      `<div class="dlg-box" style="background:#fff; border-radius:8px; padding:28px; width:100%; max-width:900px; box-shadow:0 20px 40px rgba(0,0,0,0.2);">` +
+      `<h3 data-drag-handle style="margin:0 0 4px; font-size:17px;">Product Help</h3>` +
+      `<p style="margin:0 0 12px; font-size:13px; color:var(--color-text-muted);"></p>` +
+      `<textarea id="ph-text" rows="14" style="width:100%; font-size:13px; padding:9px 12px; border:1px solid var(--color-border-strong); border-radius:6px; font-family:inherit;" placeholder="Write the formulation and process in plain words…"></textarea>` +
+      `<div style="display:flex; gap:10px; align-items:center; margin-top:12px;">` +
+      `<button class="btn btn-primary btn-sm" id="ph-save">Save</button>` +
+      `<button class="btn btn-secondary btn-sm" id="ph-insert-table">Insert table</button>` +
+      `<button class="btn btn-secondary btn-sm" id="ph-excel-table">Excel → Table</button>` +
+      `<button class="btn btn-secondary btn-sm" id="ph-close">Close</button>` +
+      `<span id="ph-msg" style="font-size:13px;"></span></div></div>`;
+    overlay.querySelector("p").textContent = (d.product_name || "") + " — blank window, your words. Blank saves as none. Simple tables (<table><tr><td>…) are supported.";
+    overlay.querySelector("#ph-text").value = d.help_text || "";
+    const close = () => overlay.remove();
+    overlay.querySelector("#ph-close").addEventListener("click", close);
+    overlay.querySelector("#ph-insert-table").addEventListener("click", () => {
+      const ta = overlay.querySelector("#ph-text");
+      const tpl = "<table>\n<tr><th>Item</th><th>Share</th></tr>\n<tr><td></td><td></td></tr>\n</table>";
+      const s = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+      const e = ta.selectionEnd == null ? ta.value.length : ta.selectionEnd;
+      ta.value = ta.value.slice(0, s) + tpl + ta.value.slice(e);
+      ta.focus();
+    });
+    // Excel → Table: copy cells in Excel, then convert. Tries the clipboard
+    // first; when clipboard access is denied, converts the selected text in
+    // the box instead (paste the Excel data, select it, click the button).
+    overlay.querySelector("#ph-excel-table").addEventListener("click", async () => {
+      const msg = overlay.querySelector("#ph-msg");
+      const ta = overlay.querySelector("#ph-text");
+      const insertAtCursor = (html) => {
+        const s = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+        const e = ta.selectionEnd == null ? ta.value.length : ta.selectionEnd;
+        ta.value = ta.value.slice(0, s) + html + ta.value.slice(e);
+        ta.focus();
+        msg.textContent = "Excel data converted to a table.";
+        msg.style.color = "var(--color-success)";
+      };
+      const fail = (text) => {
+        msg.textContent = text;
+        msg.style.color = "var(--color-danger)";
+      };
+      try {
+        const clip = await navigator.clipboard.readText();
+        if (clip && clip.indexOf("\t") !== -1) {
+          const html = tsvToTable(clip);
+          if (html) { insertAtCursor(html); return; }
+        }
+      } catch (e) { /* clipboard denied: fall through to selection */ }
+      const s = ta.selectionStart == null ? 0 : ta.selectionStart;
+      const e = ta.selectionEnd == null ? 0 : ta.selectionEnd;
+      const sel = ta.value.slice(s, e);
+      if (sel.indexOf("\t") !== -1) {
+        const html = tsvToTable(sel);
+        if (html) {
+          ta.value = ta.value.slice(0, s) + html + ta.value.slice(e);
+          ta.focus();
+          msg.textContent = "Selected text converted to a table.";
+          msg.style.color = "var(--color-success)";
+          return;
+        }
+      }
+      fail("Copy cells in Excel first, or paste the data, select it, then click again.");
+    });
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector("#ph-save").addEventListener("click", async () => {
+      const msg = overlay.querySelector("#ph-msg");
+      try {
+        msg.textContent = "Saving…";
+        const after = await window.UI.api("/products/" + id + "/help",
+          { method: "PUT", body: { help_text: overlay.querySelector("#ph-text").value } });
+        msg.textContent = after.help_text ? "Product help saved." : "Cleared — no help kept.";
+        msg.style.color = "var(--color-success)";
+      } catch (e2) {
+        msg.textContent = e2.message || "Save failed.";
+        msg.style.color = "var(--color-danger)";
+      }
+    });
+    document.body.appendChild(overlay);
+    overlay.querySelector("#ph-text").focus();
+  };
+
+  window.saveSize = async function (sizeId) {
+    const msg = document.getElementById("size-msg");
+    const pid = Number(document.getElementById("size-editor").dataset.productId);
+    try {
+      await window.UI.api("/packaging-sizes/" + sizeId, {
+        method: "PUT",
+        body: {
+          size_name: document.getElementById("se-sn-" + sizeId).value,
+          weight_in_kg: parseFloat(document.getElementById("se-sw-" + sizeId).value) || 0,
+          rate_per_kg: parseFloat(document.getElementById("se-sr-" + sizeId).value) || 0,
+          packets_per_unit: parseInt(document.getElementById("se-sp-" + sizeId).value, 10) || 1,
+          threshold_packets: Math.max(0, parseFloat(document.getElementById("se-st-" + sizeId).value) || 0),
+          wrapper_weight_kg: Math.max(0, parseFloat(document.getElementById("se-sw2-" + sizeId).value) || 0) / 1000,
+        wrapper_material_id: document.getElementById("se-wm-" + sizeId).value || null,
+        },
+      });
+      msg.textContent = "Rate saved for this pack size.";
+      msg.style.color = "var(--color-success)";
+      // Re-read the product so a rate just set to 0 is flagged immediately.
+      try {
+        const after = (await window.UI.api("/products") || []).find(function (x) { return x.id === pid; });
+        noteZeroRates(msg, after);
+      } catch (e) { /* the save already succeeded; the hint is advisory */ }
+      await loadProducts();
+      await window.editProd(pid);
+    } catch (e) {
+      msg.textContent = e.message || "Save failed.";
+      msg.style.color = "var(--color-danger)";
+    }
+  };
+
+  // Remove a pack size from the product being edited. The server
+  // deactivates it (history on issued documents is preserved); it simply
+  // stops appearing in pickers. The last size of a product cannot go.
+  // Rate history: every change with who/when, newest first. Movements keep
+  // the rate they were valued at, so this only explains margin shifts.
+  window.sizeRateHistory = async function (sizeId) {
+    try {
+      const rows = await window.UI.api("/packaging-sizes/" + sizeId + "/rate-history");
+      if (!rows || !rows.length) {
+        window.UI.infoDialog("Rate history", "No rate changes recorded for this size yet.");
+        return;
+      }
+      const lines = rows.slice(0, 20).map(r => {
+        const when = r.changed_at ? window.UI.fmtDay(r.changed_at) : "—";
+        return `${when}: ₹ ${r.old_rate} → ₹ ${r.new_rate}` + (r.changed_by_name ? ` (by ${r.changed_by_name})` : "");
+      }).join("\n");
+      window.UI.infoDialog("Rate history", lines + (rows.length > 20 ? `\n…plus ${rows.length - 20} older` : ""));
+    } catch (e) {
+      window.UI.notify(e.message || "Could not load history", "error");
+    }
+  };
+
+  window.removeSize = async function (sizeId) {
+    const msg = document.getElementById("size-msg");
+    if (!msg) return;
+    const pid = Number(document.getElementById("size-editor").dataset.productId);
+    // Read the name from the row's input instead of interpolating it into
+    // the onclick attribute: a quote in the name would break out of the
+    // JS string and kill the button.
+    const nameInput = document.getElementById("se-sn-" + sizeId);
+    const sizeName = (nameInput && nameInput.value || "").trim() || sizeId;
+    if (!confirm(`Remove pack size "${sizeName || sizeId}"? Past challans and stock entries keep it; it just won't be offered for new ones.`)) return;
+    try {
+      await window.UI.api("/packaging-sizes/" + sizeId, { method: "DELETE" });
+      msg.textContent = `Removed ${sizeName || "pack size"}.`;
+      msg.style.color = "var(--color-success)";
+      await loadProducts();
+      await window.editProd(pid);
+    } catch (e) {
+      msg.textContent = e.message || "Could not remove the pack size.";
+      msg.style.color = "var(--color-danger)";
+    }
+  };
+
+  // Pouch defaults in grams by pack size: 50g->3, 100g->4,
+  // 250g->6, 500g->10, 1kg->17. Same map the server applies at creation.
+  // The box pre-fills as the size/weight is typed; a hand-typed value
+  // always wins and travels with the add.
+  const POUCH_DEFAULT_G = { 50: 3, 100: 4, 250: 6, 500: 10, 1000: 17 };
+  let pouchAuto = "";
+  function refillPouchDefault() {
+    const box = document.getElementById("as-pouch");
+    const sizeEl = document.getElementById("as-size");
+    const weightEl = document.getElementById("as-weight");
+    if (!box || !sizeEl || !weightEl) return;
+    if (box.value !== "" && box.value !== pouchAuto) return;
+    let grams = null;
+    const kg = window.UI.parseSizeNameToKg(sizeEl.value);
+    if (kg != null && kg > 0) grams = Math.round(kg * 1000);
+    else {
+      const w = parseFloat(weightEl.value);
+      if (w > 0) grams = Math.round(w * 1000);
+    }
+    const def = grams != null ? POUCH_DEFAULT_G[grams] : undefined;
+    pouchAuto = def != null ? String(def) : "";
+    box.value = pouchAuto;
+  }
+  function wirePouchDefault() {
+    const sizeEl = document.getElementById("as-size");
+    if (!sizeEl || sizeEl.dataset.pouchwired === "1") return;
+    sizeEl.dataset.pouchwired = "1";
+    sizeEl.addEventListener("input", refillPouchDefault);
+    const weightEl = document.getElementById("as-weight");
+    if (weightEl) weightEl.addEventListener("input", refillPouchDefault);
+  }
+
+  // Add another weight to the product being edited. Posting the same product
+  // name attaches the size to the existing product instead of duplicating it.
+  window.addSizeToProduct = async function (event) {
+    // Two /products requests 19 ms apart (a double-click) both passed the
+    // duplicate check before either committed and left a duplicate Cumin
+    // 100g row. The server now refuses the second row; this stops the second
+    // request from being sent at all.
+    const __release = window.UI.submitGuard(event);
+    if (!__release) return;
+    try {
+      await addPackSize();
+    } finally {
+      __release();
+    }
+  };
+
+  async function addPackSize() {
+    const id = Number(document.getElementById("size-editor").dataset.productId);
+    const msg = document.getElementById("size-msg");
+    const name = document.getElementById("as-name").value.trim();
+    const sizeName = document.getElementById("as-size").value.trim();
+    const weight = parseFloat(document.getElementById("as-weight").value) || 0;
+    const rate = parseFloat(document.getElementById("as-rate").value) || 0;
+    const pouchG = Math.max(0, parseFloat(document.getElementById("as-pouch").value) || 0);
+    const pouchTyped = document.getElementById("as-pouch").value.trim() !== "";
+    const wrapSel = document.getElementById("as-wrapper");
+    const sizePayload = { size_name: sizeName, weight_in_kg: weight, rate_per_kg: rate, packets_per_unit: 1 };
+    // Blank pouch box -> let the server apply the size default. See createProduct.
+    if (pouchTyped) sizePayload.wrapper_weight_kg = pouchG / 1000;
+    if (wrapSel && wrapSel.value) sizePayload.wrapper_material_id = parseInt(wrapSel.value, 10);
+    if (!sizeName) {
+      msg.textContent = "Enter a pack size, e.g. 250g.";
+      msg.style.color = "var(--color-danger)";
+      return;
+    }
+    try {
+      const res = await window.UI.api("/products", {
+        method: "POST",
+        body: {
+          name: name,
+          packaging_sizes: [sizePayload],
+        },
+      });
+      const skipped = (res && res.sizes_skipped) || [];
+      msg.textContent = skipped.length
+        ? (res && res.name ? res.name : name) + " already has " + skipped.join(", ") + " — not added again."
+        : "Added " + sizeName + " to " + ((res && res.name) ? res.name : name) + ".";
+      msg.style.color = skipped.length ? "var(--color-warning)" : "var(--color-success)";
+      // Warn straight away if the new size went in with no rate of its own.
+      if (!skipped.length) {
+        try {
+          const after = (await window.UI.api("/products") || []).find(function (x) { return x.id === id; });
+          noteZeroRates(msg, after);
+        } catch (e) { /* advisory only */ }
+      }
+      await loadProducts();
+      await window.editProd(id);
+      // Re-arm the auto pouch fill for the next size, and clear the roll.
+      const pbox = document.getElementById("as-pouch");
+      if (pbox) { pbox.value = ""; pbox.dataset.auto = "1"; }
+      const wbox = document.getElementById("as-wrapper");
+      if (wbox) wbox.value = "";
+    } catch (e) {
+      msg.textContent = e.message || "Could not add the pack size.";
+      msg.style.color = "var(--color-danger)";
+    }
+  }
+
+  window.closeSizeEditor = function () {
+    document.getElementById("size-editor").style.display = "none";
+  };
+
+  // Shared dismiss for the page's fixed-header dialogs: backdrop click and
+  // Esc close, so long content never strands the close control. Wired once
+  // per overlay (closeFn is a window.* name).
+  function wireEditorDismiss(overlayId, closeFn) {
+    const ov = document.getElementById(overlayId);
+    if (!ov || ov.dataset.dismissBound) return;
+    ov.dataset.dismissBound = "1";
+    ov.addEventListener("mousedown", (e) => {
+      if (e.target === ov && typeof window[closeFn] === "function") window[closeFn]();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      const m = document.getElementById(overlayId);
+      if (m && m.style.display !== "none" && typeof window[closeFn] === "function") window[closeFn]();
+    });
+  }
+
+  /* ---------- Production workflow (spec 6) ----------
+     A product may skip stages. The editor shows every possible stage as a
+     toggle, and the chosen ones in the order they will be produced. The saved
+     order is the order the production form uses. */
+  let wfAll = [];        // every stage the system knows
+  let wfChosen = [];     // the ones currently ticked, in order
+  let wfProductId = null;
+  let wfProductName = "";
+
+  const titleCase = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+  function renderWorkflowPanel() {
+    const list = document.getElementById("wf-list");
+    if (!list) return;
+    list.innerHTML = "";
+    if (!wfChosen.length) {
+      const p = document.createElement("p");
+      p.style.cssText = "font-size:12px; color:var(--color-danger); margin:0 0 8px;";
+      p.textContent = "Pick at least one stage - a product with no stages cannot be produced.";
+      list.appendChild(p);
+    }
+    wfChosen.forEach((s, i) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex; align-items:center; gap:8px; margin-bottom:6px;";
+      row.innerHTML =
+        `<span style="width:20px; text-align:center; font-size:11px; color:var(--color-text-muted);">${i + 1}</span>` +
+        `<span style="flex:1; font-weight:600;">${escAdj(titleCase(s))}</span>` +
+        `<button class="btn btn-sm btn-secondary" type="button" data-approve ${i === 0 ? "disabled" : ""} onclick="wfMove(${i},-1)" title="Move up">↑</button>` +
+        `<button class="btn btn-sm btn-secondary" type="button" data-approve ${i === wfChosen.length - 1 ? "disabled" : ""} onclick="wfMove(${i},1)" title="Move down">↓</button>` +
+        `<button class="btn btn-sm btn-danger" type="button" data-approve onclick="wfRemove('${s}')" title="Remove this stage">✕</button>`;
+      list.appendChild(row);
+    });
+
+    const avail = document.getElementById("wf-available");
+    if (avail) {
+      const unused = wfAll.filter(s => wfChosen.indexOf(s) === -1);
+      avail.innerHTML = unused.length
+        ? unused.map(s =>
+            `<button class="btn btn-sm btn-secondary" type="button" data-approve onclick="wfAdd('${s}')">+ ${escAdj(titleCase(s))}</button>`
+          ).join(" ")
+        : `<span style="font-size:12px; color:var(--color-text-muted);">Every stage is used by this product.</span>`;
+    }
+    document.getElementById("wf-msg").textContent = "";
+  }
+
+  window.wfAdd = function (s) {
+    if (wfChosen.indexOf(s) === -1) wfChosen.push(s);
+    renderWorkflowPanel();
+  };
+
+  window.wfRemove = function (s) {
+    wfChosen = wfChosen.filter(x => x !== s);
+    renderWorkflowPanel();
+  };
+
+  window.wfMove = function (i, dir) {
+    const j = i + dir;
+    if (j < 0 || j >= wfChosen.length) return;
+    const tmp = wfChosen[i];
+    wfChosen[i] = wfChosen[j];
+    wfChosen[j] = tmp;
+    renderWorkflowPanel();
+  };
+
+  window.wfResetToDefault = function () {
+    const d = wfAll.slice();
+    wfChosen = d;
+    renderWorkflowPanel();
+  };
+
+  window.editWorkflow = async function (id) {
+    try {
+      const d = await window.UI.api("/products/" + id + "/workflow");
+      wfAll = d.available_stages || [];
+      wfChosen = (d.stages || []).slice();
+      wfProductId = id;
+      wfProductName = d.product_name || ("Product #" + id);
+      document.getElementById("wf-title").textContent = "Production workflow — " + wfProductName;
+      document.getElementById("wf-note").textContent = d.is_default
+        ? "This product uses the full default workflow."
+        : "This product has a custom workflow. Production entries are limited to these stages.";
+      renderWorkflowPanel();
+      if (window.UI && window.UI.resetDraggable) {
+        window.UI.resetDraggable(document.querySelector("#workflow-editor .modal-card"));
+      }
+      wireEditorDismiss("workflow-editor", "closeWorkflowEditor");
+      document.getElementById("workflow-editor").style.display = "flex";
+    } catch (e) {
+      window.UI.notify(e.message || "Could not load the workflow", "error");
+    }
+  };
+
+  window.closeWorkflowEditor = function () {
+    document.getElementById("workflow-editor").style.display = "none";
+    wfProductId = null;
+  };
+
+  window.saveWorkflow = async function () {
+    const msg = document.getElementById("wf-msg");
+    if (!wfChosen.length) {
+      msg.style.color = "var(--color-danger)";
+      msg.textContent = "Keep at least one stage.";
+      return;
+    }
+    try {
+      const d = await window.UI.api("/products/" + wfProductId + "/workflow", {
+        method: "PUT", body: { stages: wfChosen }
+      });
+      msg.style.color = "var(--color-success)";
+      msg.textContent = "Saved: " + (d.stages || []).map(titleCase).join(" → ") + ".";
+      // The production form caches workflows per product, so drop this one.
+      window.productionWorkflowInvalidated &&
+        window.productionWorkflowInvalidated(wfProductId);
+    } catch (e) {
+      msg.style.color = "var(--color-danger)";
+      msg.textContent = e.message || "Could not save";
+    }
+  };
+
+  window.openNewProductForm = function () {
+    document.getElementById("new-prod-form").reset();
+    document.getElementById("prod-form").style.display = "block";
+    document.getElementById("prod-name").focus();
+  };
+
+  // Adjustment-reason history: first entry is typed by hand, later
+  // adjustments pick from it. A fetch failure leaves a free-text input.
+  async function loadAdjReasons() {
+    const dl = document.getElementById("adj-reason-list");
+    if (!dl) return;
+    try {
+      const d = await window.UI.api("/stock-adjustments/reasons") || {};
+      dl.innerHTML = (d.reasons || []).map(v =>
+        `<option value="${escAdj(v)}">`).join("");
+    } catch (e) { console.error("Adjustment reasons", e); }
+  }
+
+  window.openAdjustForm = function () {
+    document.getElementById("new-adj-form").reset();
+    document.getElementById("adj-msg").textContent = "";
+    document.getElementById("adj-hint").textContent = "";
+    document.getElementById("adj-form").style.display = "block";
+    document.getElementById("adj-item").focus();
+    setAdjustUnit("packets");
+    refreshAdjustItems();
+    loadAdjReasons();
+  };
+
+  window.cancelAdjustForm = function () {
+    document.getElementById("new-adj-form").reset();
+    document.getElementById("adj-msg").textContent = "";
+    document.getElementById("adj-form").style.display = "none";
+  };
+
+  window.refreshAdjustItems = function () {
+    // This page only adjusts finished goods: the kind is fixed, so the
+    // item picker can never offer raw materials here.
+    const itemSel = document.getElementById("adj-item");
+    const packWrap = document.getElementById("adj-pack-wrap");
+    const packSel = document.getElementById("adj-pack");
+    packWrap.style.display = "";
+    itemSel.innerHTML = '<option value="">Select product…</option>' +
+      window.UI.sortByName(allProducts).map(p => `<option value="${p.id}">${escAdj(p.name)}</option>`).join("");
+    packSel.innerHTML = '<option value="">Select product first</option>';
+    document.getElementById("adj-hint").textContent = "";
+    updateAdjHint();
+    if (window.UI.quickSelect && !itemSel.parentNode.querySelector(".quickselect-search")) {
+      window.UI.quickSelect(itemSel, "Type to find…");
+    }
+    adjustProductChanged();
+  };
+
+  /* Packet/kg entry: packets is the default (recounts and damage entries
+     count whole packets); kg stays one click away for torn or loose
+     weight. The size's own weight converts, so the ledger keeps its kg
+     unit and history keeps the exact packet count. */
+
+  let adjUnit = "packets";
+
+  function applyAdjustUnitButtons() {
+    const on = "btn btn-sm btn-primary";
+    const off = "btn btn-sm btn-secondary";
+    document.getElementById("adj-unit-packets").className = adjUnit === "packets" ? on : off;
+    document.getElementById("adj-unit-kg").className = adjUnit === "kg" ? on : off;
+  }
+
+  window.setAdjustUnit = function (unit) {
+    adjUnit = unit;
+    document.getElementById("adj-unit-label").textContent = unit;
+    document.getElementById("adj-qty").step = unit === "packets" ? "1" : "0.001";
+    applyAdjustUnitButtons();
+    updateAdjHint();
+  };
+
+  function adjSelectedSize() {
+    const prod = allProducts.find(p => String(p.id) === String(document.getElementById("adj-item").value));
+    if (!prod) return null;
+    return activeSizes(prod).find(s => String(s.id) === String(document.getElementById("adj-pack").value)) || null;
+  }
+
+  window.updateAdjHint = function () {
+    const conv = document.getElementById("adj-conv");
+    if (!conv) return;
+    const prodId = String(document.getElementById("adj-item").value || "");
+    const size = adjSelectedSize();
+    const parts = [];
+    const bal = (stockSizesByProduct[prodId] || []).find(r =>
+      size && String(r.size_id) === String(size.id));
+    if (bal) {
+      parts.push(
+        "have " + (Math.round((bal.balance_packets || 0) * 100) / 100) +
+        " pkts (" + (Math.round((bal.balance_kg || 0) * 100) / 100) + " kg)"
+      );
+    }
+    const q = parseFloat(document.getElementById("adj-qty").value) || 0;
+    const w = size ? (parseFloat(size.weight_in_kg) || 0) : 0;
+    if (q && w > 0) {
+      if (adjUnit === "packets") parts.push(q + " pkt = " + (Math.round(q * w * 1000) / 1000) + " kg");
+      else parts.push((Math.round(q / w * 100) / 100) + " pkt");
+    }
+    conv.textContent = parts.join(" · ");
+  };
+
+  window.adjustProductChanged = function () {
+    if (document.getElementById("adj-kind").value !== "finished_product") return;
+    const sel = document.getElementById("adj-item");
+    const prod = allProducts.find(p => String(p.id) === String(sel.value));
+    const sizes = activeSizes(prod);
+    const packSel = document.getElementById("adj-pack");
+    packSel.innerHTML = sizes.length
+      ? sizes.map(s => `<option value="${s.id}">${escAdj(s.size_name)}</option>`).join("")
+      : '<option value="">No sizes</option>';
+    packSel.onchange = updateAdjHint;
+    updateAdjHint();
+  };
+
+  window.saveAdjustment = async function (event) {
+    if (event) event.preventDefault();
+    const __release = window.UI.submitGuard(event);
+    if (!__release) return;
+    const msg = document.getElementById("adj-msg");
+    // This page only adjusts finished goods (kind is fixed in the form).
+    const payload = {
+      kind: "finished_product",
+      product_id: parseInt(document.getElementById("adj-item").value),
+      packaging_size_id: parseInt(document.getElementById("adj-pack").value),
+      quantity: parseFloat(document.getElementById("adj-qty").value) || 0,
+      entry_unit: adjUnit,
+      reason: document.getElementById("adj-reason").value,
+    };
+    try {
+      const res = await fetch("/stock-adjustments", { method: "POST",
+        headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+      msg.textContent = "Adjustment recorded.";
+      msg.style.color = "var(--color-success)";
+      document.getElementById("adj-form").style.display = "none";
+      document.getElementById("new-adj-form").reset();
+      loadAdjustments();
+      loadProducts();
+      __release();
+    } catch (e) {
+      msg.textContent = (e.message || "Error");
+      msg.style.color = "var(--color-danger)";
+      __release();
+    }
+  };
+
+  async function loadAdjustments() {
+    try {
+      const data = await window.UI.api("/stock-adjustments");
+      // Products page: raw-material rows belong to the raw-materials page.
+      const rows = (data || []).filter(a => (a.kind || "") === "Finished Goods").map(a => ({
+        date: window.UI.dateWithTime(a.date, a.date),
+        dateKey: window.UI.tsKey(a.date),
+        kind: a.kind || "—",
+        item: a.item || "—",
+        quantity: (a.quantity > 0 ? "+" : "") + (a.quantity != null ? a.quantity : "0") + " " + (a.unit || ""),
+        reason: a.reason || "—",
+      }));
+      const container = document.getElementById("adj-table");
+      if (container && window.UI.renderTable) {
+        window.UI.renderTable(container, rows, [
+          {key:"date",label:"Date"},{key:"kind",label:"Type"},{key:"item",label:"Item"},
+          {key:"quantity",label:"Qty"},{key:"reason",label:"Reason"}
+        ], { pageSize: 15, sortValue: { date: r => r.dateKey } });
+      }
+    } catch (e) {
+      console.error("Adjustments", e);
+      document.getElementById("adj-table").innerHTML = "<p>Failed to load.</p>";
+    }
+  }
+
+  // Deep-link from product search and the dashboard Add Product button
+  // (#/products?search=<name>, #/products?new=1): prefill the product
+  // search box, or open the new-product form straight away.
+  (function applyProductsDeepLink() {
+    const hash = window.location.hash || "";
+    if (/[?&]new=1/.test(hash)) { window.openNewProductForm(); }
+    const m = hash.match(/[?&]search=([^&]*)/);
+    if (!m) return;
+    const name = decodeURIComponent(m[1].replace(/\+/g, " ")).trim();
+    if (!name) return;
+    const el = document.getElementById("prod-search");
+    if (el) el.value = name;
+  })();
+
+  loadProducts();
+  // Searchable dropdown on the table filter (click empty box → everything
+  // the text search matches: product names and categories).
+  if (window.UI.searchSuggest) {
+    window.UI.searchSuggest(document.getElementById("prod-search"), () => {
+      const out = new Set();
+      allProducts.forEach((p) => {
+        if (p.name) out.add(String(p.name));
+        if (p.category) out.add(String(p.category));
+      });
+      return Array.from(out);
+    });
+  }
+  loadAdjReasons();
+  loadRawNames().then(refreshWrapperSelects);
+  loadAdjustments();
+
+  // Opening stock modal.
+  // The overlay markup is inserted at the end of this script, so the element
+  // is looked up fresh on every call - a const captured earlier would be null
+  // because the element did not exist yet, and openOpeningModal would throw
+  // before the modal ever appeared.
+  function getOpeningOverlay() {
+    return document.getElementById("opening-stock-overlay");
+  }
+  function openOpeningModal(prod) {
+    const sizes = activeSizes(prod);
+    if (!sizes.length) { alert("No packaging sizes for this product."); return; }
+    const overlay = getOpeningOverlay();
+    if (!overlay) { alert("Opening stock popup is not ready. Please reload the page."); return; }
+    const container = document.getElementById("opening-stock-fields");
+    container.innerHTML = sizes.map(s => `
+      <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--color-border);">
+        <label style="min-width:120px; font-weight:500;">${escAdj(s.size_name)}</label>
+        <span style="color:var(--color-text-muted); font-size:12px;">(${fmtW2(s.weight_in_kg)} kg each)</span>
+        <input type="number" step="1" min="0" value="0"
+          data-size-id="${s.id}" data-size-name="${escAdj(s.size_name)}" data-weight="${s.weight_in_kg}"
+          style="width:100px; padding:6px 8px; font-size:14px;"
+          placeholder="packets">
+      </div>
+    `).join("");
+    // textContent, not innerHTML: the name must not be HTML-escaped here.
+    document.getElementById("opening-stock-title").textContent =
+      `Opening stock for ${prod.name} — enter packets for each size`;
+    if (window.UI && window.UI.resetDraggable) {
+      window.UI.resetDraggable(overlay.querySelector(".modal-card"));
+    }
+    wireEditorDismiss("opening-stock-overlay", "closeOpeningModal");
+    overlay.style.display = "flex";
+    overlay.dataset.productId = prod.id;
+    overlay.dataset.productName = prod.name;
+  }
+  function closeOpeningModal() {
+    const overlay = getOpeningOverlay();
+    if (overlay) overlay.style.display = "none";
+  }
+  // The modal buttons use inline onclick, which only resolves against the
+  // global scope - without these assignments Save/Cancel throw
+  // "closeOpeningModal is not defined".
+  window.closeOpeningModal = closeOpeningModal;
+  window.submitOpeningStock = submitOpeningStock;
+  async function submitOpeningStock() {
+    const overlay = getOpeningOverlay();
+    if (!overlay) { alert("Opening stock popup is not ready. Please reload the page."); return; }
+    const prodId = overlay.dataset.productId;
+    const prodName = overlay.dataset.productName;
+    if (!prodId) { closeOpeningModal(); return; }
+    const inputs = overlay.querySelectorAll("#opening-stock-fields input[type=number]");
+    const updates = [];
+    inputs.forEach(inp => {
+      const pkts = parseFloat(inp.value) || 0;
+      if (pkts > 0) {
+        updates.push({
+          packaging_size_id: parseInt(inp.dataset.sizeId),
+          packets: pkts,
+          sizeName: inp.dataset.sizeName,
+          weight: parseFloat(inp.dataset.weight),
+        });
+      }
+    });
+    if (!updates.length) { alert("Enter packets greater than 0 for at least one size."); return; }
+    const btn = overlay.querySelector("button.btn-primary");
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+    try {
+      for (const u of updates) {
+        const res = await fetch("/finished-stock/opening", { method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ product_id: prodId, packaging_size_id: u.packaging_size_id, packets: u.packets }) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+      }
+      const msg = document.getElementById("prod-msg");
+      msg.textContent = `Opening stock saved for ${updates.length} size(s).`;
+      msg.style.color = "var(--color-success)";
+      closeOpeningModal();
+      loadProducts();
+    } catch (e) {
+      document.getElementById("prod-msg").textContent = (e.message || "Error");
+      document.getElementById("prod-msg").style.color = "var(--color-danger)";
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Save";
+    }
+  }
+
+  // Opening stock modal overlay
+  const openingOverlayHtml = `
+    <div id="opening-stock-overlay" class="modal-overlay" style="display:none;">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-label="Opening stock" style="max-width:520px;">
+        <div class="modal-head" data-drag-handle title="Drag to move">
+          <h3 style="margin:0; font-size:18px;">➕ Opening Stock</h3>
+          <button class="modal-close" type="button" onclick="closeOpeningModal()" aria-label="Close">×</button>
+        </div>
+        <div class="modal-body">
+        <div id="opening-stock-title" style="font-size:14px; color:var(--color-text-muted); margin-bottom:16px;"></div>
+        <div id="opening-stock-fields" style="font-size:14px;"></div>
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px; padding-top:16px; border-top:1px solid var(--color-border);">
+          <button class="btn btn-danger-outline" onclick="closeOpeningModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="submitOpeningStock()">Save</button>
+        </div>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML("beforeend", openingOverlayHtml);
+  wireHsnSuggest("se-name", "se-hsn", "product");
+})();
+
+function escAdj(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Escape a value used inside an HTML attribute, e.g. a title="..." tooltip.
+function escAttr(s) { return escAdj(s); }
+</script>

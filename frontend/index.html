@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title id="page-title">Shresth Masala Industry — Management System</title>
+  <link rel="stylesheet" href="/frontend/css/style.css?v=9" />
+  <link rel="icon" href="/frontend/assets/favicon.png" type="image/png" />
+  <script>
+    // Theme before first paint: applying after CSS loads would flash the
+    // wrong theme on every launch for dark users.
+    try {
+      if ((localStorage.getItem("mf_theme") || "light") === "dark") {
+        document.documentElement.dataset.theme = "dark";
+      }
+      // Same for the folded sidebar: no flash of the full menu.
+      if (localStorage.getItem("mf_sidebar") === "1") {
+        document.addEventListener("DOMContentLoaded", () =>
+          document.body.classList.add("sidebar-collapsed"), { once: true });
+      }
+    } catch (e) {}
+  </script>
+</head>
+<body class="logged-out">
+  <!-- Skip link for accessibility -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+  <!-- Auth gate: covers the app until sign-in -->
+  <div id="auth-screen">
+    <div class="auth-card">
+      <div class="auth-brand"><img src="/frontend/assets/logo.png?v=4" alt="Shresth Masala logo" class="brand-logo" onerror="this.style.display='none'" />
+        <div><h2>Shresth Masala Industry</h2><span class="brand-sub">Management System</span></div>
+      </div>
+      <div class="auth-tabs">
+        <button id="tab-login" class="auth-tab active" type="button">Sign In</button>
+        <button id="tab-register" class="auth-tab" type="button">Register</button>
+      </div>
+      <form id="login-form">
+        <div class="form-group"><label>Username</label><input id="login-username" autocomplete="username" required /></div>
+        <div class="form-group"><label>Password</label><input id="login-password" type="password" autocomplete="current-password" required /></div>
+        <button id="login-btn" class="btn btn-primary" style="width:100%; justify-content:center;" type="submit">Sign In</button>
+        <p class="auth-hint">First time here? Use Register to create the admin account.</p>
+      </form>
+      <form id="register-form" style="display:none;">
+        <div class="form-group"><label>Username</label><input id="reg-username" autocomplete="username" required /></div>
+        <div class="form-group"><label>Full Name</label><input id="reg-fullname" autocomplete="name" /></div>
+        <div class="form-group"><label>Email</label><input id="reg-email" type="email" autocomplete="email" /></div>
+        <div class="form-group"><label>Password (min 6 chars)</label><input id="reg-password" type="password" autocomplete="new-password" required /></div>
+        <div class="form-group"><label>Role</label>
+          <select id="reg-role">
+            <option value="admin">Admin</option>
+            <option value="manager">Manager</option>
+            <option value="data_entry">Data Entry</option>
+            <option value="viewer">Viewer</option>
+            <option value="challan_entry">Challan Entry</option>
+          </select>
+        </div>
+        <button id="reg-btn" class="btn btn-primary" style="width:100%; justify-content:center;" type="submit">Create Account</button>
+      </form>
+      <div id="auth-msg" style="font-size:13px; margin-top:12px; min-height:18px;"></div>
+    </div>
+  </div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <img src="/frontend/assets/logo.png?v=4" alt="Shresth Masala logo" class="brand-logo" onerror="this.style.display='none'" />
+      <div>
+        <h2>Shresth Masala Industry</h2>
+        <span class="brand-sub">Management System</span>
+        <span id="env-badge" class="badge" style="display:none; margin-left:8px; font-size:10px; padding:2px 6px; background:#ffc107; color:#000; border-radius:3px;"></span>
+      </div>
+    </div>
+    <nav class="nav-menu" aria-label="Main navigation">
+      <ul id="nav-list">
+        <li><a href="#/dashboard" class="nav-link active" data-page="dashboard">🏠 Dashboard</a></li>
+        <li class="nav-section"><button type="button" class="nav-section-toggle" data-section="insights" aria-expanded="true">Insights <span class="chev">−</span></button></li>
+        <li data-group="insights"><a href="#/alerts" class="nav-link" data-page="alerts">🔔 Alerts <span id="alert-badge" class="badge badge-danger" style="display:none; margin-left:6px;"></span></a></li>
+        <li data-group="insights"><a href="#/monthly-sales" class="nav-link" data-page="monthly-sales">📅 Monthly Sales</a></li>
+        <li data-group="insights"><a href="#/analysis" class="nav-link" data-page="analysis">📦 Stock Analysis</a></li>
+        <li data-group="insights"><a href="#/raw-material-summary" class="nav-link" data-page="raw-material-summary">🧂 Raw Material Summary</a></li>
+        <li data-group="insights"><a href="#/purchase-summary" class="nav-link" data-page="purchase-summary">🧾 Purchase Summary</a></li>
+        <li data-group="insights"><a href="#/payment-summary" class="nav-link" data-page="payment-summary">💰 Payment Received</a></li>
+        <li data-group="insights"><a href="#/help" class="nav-link" data-page="help">❓ Help</a></li>
+        <li class="nav-section"><button type="button" class="nav-section-toggle" data-section="master" aria-expanded="true">Master Data <span class="chev">−</span></button></li>
+        <li data-group="master"><a href="#/customers" class="nav-link" data-page="customers">👥 Customers</a></li>
+        <li data-group="master"><a href="#/suppliers" class="nav-link" data-page="suppliers">🏢 Suppliers</a></li>
+        <li data-group="master"><a href="#/products" class="nav-link" data-page="products">📦 Products</a></li>
+        <li data-group="master"><a href="#/raw-materials" class="nav-link" data-page="raw-materials">🧂 Raw Materials</a></li>
+        <li data-group="master"><a href="#/employees" class="nav-link" data-page="employees">👤 Employees</a></li>
+        <li class="nav-section"><button type="button" class="nav-section-toggle" data-section="operations" aria-expanded="true">Inventory &amp; Operations <span class="chev">−</span></button></li>
+        <li data-group="operations"><a href="#/invoices" class="nav-link" data-page="invoices">🧾 Invoices</a></li>
+        <li data-group="operations"><a href="#/challans" class="nav-link" data-page="challans">🚚 Challans</a></li>
+        <li data-group="operations"><a href="#/followup" class="nav-link" data-page="followup">📞 Dues Follow-up</a></li>
+        <li data-group="operations"><a href="#/production" class="nav-link" data-page="production">🏭 Production</a></li>
+        <li data-group="operations"><a href="#/production-history" class="nav-link" data-page="production-history">📜 Production History</a></li>
+        <li data-group="operations"><a href="#/expenses" class="nav-link" data-page="expenses">💰 Expenses</a></li>
+        <li data-group="operations"><a href="#/payroll" class="nav-link" data-page="payroll">💸 Payroll</a></li>
+        <li class="nav-section"><button type="button" class="nav-section-toggle" data-section="reports" aria-expanded="true">Reports <span class="chev">−</span></button></li>
+        <li data-group="reports"><a href="#/reports" class="nav-link" data-page="reports">📊 Reports</a></li>
+        <li data-group="reports">
+          <button type="button" class="nav-section-toggle" data-section="custom-reports" aria-expanded="true" style="padding-left:28px;">Custom Reports <span class="chev">−</span></button>
+          <ul class="nav-sub-reports" id="nav-custom-reports" style="margin-top:2px;"></ul>
+        </li>
+        <li data-group="reports" id="nav-saved-wrap">
+          <ul class="nav-sub-reports" id="nav-saved-reports"></ul>
+        </li>
+        <li class="nav-section"><button type="button" class="nav-section-toggle" data-section="system" aria-expanded="true">System <span class="chev">−</span></button></li>
+        <li data-group="system"><a href="#/import" class="nav-link" data-page="import">📥 Import / Export</a></li>
+        <li data-group="system"><a href="#/backup" class="nav-link" data-page="backup">💾 Backup</a></li>
+        <li data-group="system"><a href="#/users" class="nav-link" data-page="users">👥 Users</a></li>
+        <li data-group="system"><a href="#/audit" class="nav-link" data-page="audit">📜 Audit History</a></li>
+        <li data-group="system"><a href="#/settings" class="nav-link" data-page="settings">⚙ Settings</a></li>
+      </ul>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sys-status"><span class="dot dot-green"></span>Database: Connected</div>
+      <div class="sys-status"><span class="dot dot-green" id="backup-dot"></span>Last Backup: <span id="last-backup">—</span></div>
+    </div>
+  </aside>
+
+  <div class="main-wrapper">
+    <header class="top-header" id="top-header">
+      <div class="header-left">
+        <button class="btn-icon" id="menu-toggle" aria-label="Toggle menu" title="Toggle menu">&#9776;</button>
+        <h1 id="page-title">Dashboard</h1>
+        <button class="btn btn-secondary btn-sm" id="refresh-page" type="button"
+                title="Reload this page's data" aria-label="Refresh this page">⟳ Refresh</button>
+        <button class="btn btn-sm editor-toggle" id="editor-toggle" type="button"
+                title="Editor Mode must be on before anything can be edited or deleted"
+                aria-pressed="false">🔒 Editor Mode: OFF</button>
+        <button class="btn btn-secondary btn-sm" id="theme-toggle" type="button"
+                title="Switch between light and dark theme" aria-label="Toggle theme"
+                onclick="window.App && window.App.toggleTheme()">🌙 Dark</button>
+      </div>
+      <div class="header-right">
+        <div id="global-search-wrap" style="position:relative;">
+          <input id="global-search" type="search" placeholder="Search customers, challans…" autocomplete="off"
+            title="Search customers, challans, invoices, products, suppliers"
+            style="padding:7px 12px; border:1px solid var(--color-border); border-radius:6px; font-size:13px; min-width:220px;" />
+          <div id="global-search-results" style="display:none; position:absolute; top:110%; right:0; min-width:280px; max-width:360px; max-height:320px; overflow-y:auto; background:#fff; border:1px solid var(--color-border); border-radius:8px; box-shadow:0 12px 28px rgba(0,0,0,0.15); z-index:200; padding:4px 0;"></div>
+        </div>
+        <span class="badge badge-success">Offline Ready</span>
+        <span class="user-info" id="user-info" title="Signed in user">—</span>
+        <button class="btn btn-secondary btn-sm" id="switch-user-btn" type="button" style="display:none;" onclick="window.Auth.logout()" title="Sign out so someone else can sign in on this computer">Switch User</button>
+        <button class="btn btn-secondary btn-sm" id="logout-btn" type="button" style="display:none;">Sign Out</button>
+        <span class="version">v0.1.0</span>
+      </div>
+    </header>
+
+    <main class="main-content" id="main-content">
+      <!-- Dynamic pages injected here -->
+    </main>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="/frontend/js/components.js?v=15"></script>
+  <script src="/frontend/js/auth.js?v=5"></script>
+  <script src="/frontend/js/app.js?v=5"></script>
+  <script>
+    // Fetch app environment and update title/badge for test mode
+    fetch("/app/env")
+      .then(r => r.json())
+      .then(data => {
+        if (data.env === "test") {
+          const titleEl = document.getElementById("page-title");
+          if (titleEl) {
+            titleEl.textContent = "[TEST] Shresth Masala Industry — Management System";
+            document.title = "[TEST] Shresth Masala Industry — Management System";
+          }
+          // Trigger badge update if auth already loaded
+          if (window.Auth && window.Auth.getToken()) {
+            const badge = document.getElementById("env-badge");
+            if (badge) {
+              badge.textContent = "Test Environment";
+              badge.style.display = "inline-block";
+            }
+          }
+        }
+      })
+      .catch(() => {}); // Silent fail - not critical
+  </script>
+</body>
+</html>

@@ -1,0 +1,845 @@
+<!-- Purchase Invoices + Sales (Tax) Invoices -->
+<style>
+  /* New Purchase Invoice: a tighter header so the line items get the room
+     instead of the form chrome. Scoped to #inv-form so every other form in
+     the app keeps its normal spacing. */
+  #inv-form .form-group { margin-bottom: 8px; }
+  #inv-form .form-group label { font-size: 11px; margin-bottom: 3px; }
+  #inv-form .form-group input,
+  #inv-form .form-group select { padding: 7px 10px; }
+  /* Tighter gutters: the pixels come off the gaps and go to the Material
+     column, which is the only one holding text that needs reading. */
+  #inv-form .form-row { gap: 10px; }
+  /* The line-item list scrolls inside its own box; fitInvoiceItems() measures
+     the height so + Add Item, the Total and Save never scroll away. */
+  #inv-items-wrap { overflow-y: auto; }
+  /* The material picker's list is wider than its column so long material
+     names stay readable. Its height is now placed against the viewport by
+     UI.quickSelect, so no max-height belongs here. */
+  #inv-form .quickselect-panel { min-width: 340px; }
+</style>
+<!-- Tabs and the purchase-invoice actions share one row. The page title above
+     already says "Purchase Invoices", so the old second title (and the form's
+     own heading) were pure height between the operator and the line items.
+     The actions sit outside #inv-purchase-wrap so the tabs stay reachable
+     while the Sales view is showing. -->
+<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+  <div style="display:flex; gap:6px;">
+    <button class="btn btn-sm btn-primary" id="inv-tab-purchase" onclick="switchInvoiceTab('purchase')">Purchase Invoices</button>
+    <button class="btn btn-sm btn-secondary" id="inv-tab-sales" onclick="switchInvoiceTab('sales')">Sales Invoices (Tax)</button>
+  </div>
+  <div id="inv-purchase-actions" style="display:flex; gap:10px; align-items:center;">
+    <label class="toggle-archived"><input type="checkbox" id="inv-show-archived" onchange="loadInvoices()"> Show archived</label>
+    <button class="btn btn-primary" onclick="openNewInvoiceForm()">+ New Purchase Invoice</button>
+  </div>
+</div>
+<div id="inv-purchase-wrap">
+<div class="card" id="inv-form" style="display:none;">
+    <form onsubmit="saveInvoice(event)" id="new-inv-form">
+      <div class="form-row">
+        <div class="form-group" style="flex:1.6;"><label>Supplier</label><select id="inv-supplier" required></select>
+          <div id="inv-supplier-details" style="display:none; font-size:12px; color:var(--color-text-muted); margin-top:4px; line-height:1.5;"></div>
+        </div>
+        <div class="form-group" style="flex:0.9;"><label>Invoice No.</label><input id="inv-number" placeholder="Auto if blank" /></div>
+        <div class="form-group" style="flex:0.8;"><label>Date</label><input id="inv-date" type="date" required /></div>
+        <div class="form-group" style="flex:1.6;"><label>Notes</label><input id="inv-notes" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" title="Freight the transporter billed. Cost info for your per-kg landed cost only — never part of what the supplier is owed."><label>Transport Charges</label>
+          <div style="display:flex; align-items:stretch;"><span class="rupee-prefix">₹</span><input id="inv-transport" type="number" step="0.01" min="0" class="money-input" style="flex:1; min-width:60px;" oninput="updateInvoiceTotal()" /></div>
+        </div>
+        <div class="form-group" title="Extra charges (labour, weighing, hamali…). Cost info for your per-kg landed cost only — never part of what the supplier is owed."><label>Other Charges</label>
+          <div style="display:flex; align-items:stretch;"><span class="rupee-prefix">₹</span><input id="inv-other" type="number" step="0.01" min="0" class="money-input" style="flex:1; min-width:60px;" oninput="updateInvoiceTotal()" /></div>
+        </div>
+        <div class="form-group"><label>Discount</label>
+          <div style="display:flex; align-items:stretch;"><span class="rupee-prefix">₹</span><input id="inv-disc" type="number" step="0.01" min="0" class="money-input" style="flex:1; min-width:60px;" oninput="updateInvoiceTotal()" /></div>
+        </div>
+        <div class="form-group"><label>Paid Amount</label>
+          <div style="display:flex; align-items:stretch;"><span class="rupee-prefix">₹</span><input id="inv-paid" type="number" step="0.01" min="0" class="money-input" style="flex:1; min-width:60px;" oninput="updateInvoiceTotal()" /></div>
+        </div>
+      </div>
+
+      <h5 style="font-size:12px; font-weight:600; margin:2px 0 6px; color: var(--color-text-muted);">Line Items</h5>
+      <!-- The list scrolls inside its own box (its height is measured by
+           fitInvoiceItems) so + Add Item, the Total and Save stay on screen
+           however many lines are entered. -->
+      <div id="inv-items-wrap"><div id="inv-items"></div></div>
+      <div id="inv-items-tail">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addInvoiceRow()">+ Add Item</button>
+
+        <div style="display:flex; gap:10px; margin-top:12px; align-items:center;">
+          <button type="submit" class="btn btn-primary">Save Purchase Invoice</button>
+          <button type="button" class="btn btn-danger-outline" onclick="cancelInvoiceForm()">← Back to List</button>
+          <span id="inv-total" style="margin-left:auto; font-weight:600;">Total ₹&nbsp;
+            <input id="inv-total-edit" type="number" step="0.01" min="0" title="What the supplier invoice says: auto-filled as goods value, type over it to follow the paper" style="width:110px;" />
+          </span>
+          <span id="inv-out-hint" style="font-weight:600; color:var(--color-text-muted); white-space:nowrap;">Outstanding ₹ 0.00</span>
+        </div>
+      </div>
+    </form>
+    <div id="inv-msg" style="font-size:13px; margin-top:10px; color: var(--color-text-muted);"></div>
+</div>
+
+<div class="card card-view" id="inv-detail-card" style="display:none;">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px;">
+    <h3 style="margin:0;">Purchase Invoice Details</h3>
+    <button class="btn btn-primary btn-sm" onclick="window.backToInvoiceList()">← Back to List</button>
+  </div>
+  <div id="inv-detail-body" style="font-size:14px; line-height:1.8;"></div>
+  <!-- Second exit at the foot of a long detail view (items, payments) so
+       leaving never needs the scroll back to the header — same pattern as
+       the challan details card. -->
+  <div style="margin-top:12px; border-top:1px solid var(--color-border); padding-top:10px; display:flex; justify-content:flex-end;">
+    <button class="btn btn-primary btn-sm" onclick="window.backToInvoiceList()">← Back to List</button>
+  </div>
+</div>
+
+<div class="card card-form" id="inv-pay-card" style="display:none;">
+  <h3>Pay Supplier — <span id="sup-pay-inv-no"></span></h3>
+  <p id="sup-pay-info" style="font-size:13px; color:var(--color-text-muted); margin-bottom:12px;"></p>
+  <form onsubmit="saveSupplierPayment(event)" id="sup-pay-form">
+    <div class="form-row">
+      <div class="form-group"><label>Amount (₹)</label><input id="sup-pay-amount" type="number" step="0.01" min="0" required /></div>
+      <div class="form-group"><label>Date</label><input id="sup-pay-date" type="date" required /></div>
+      <div class="form-group"><label>Mode</label>
+        <select id="sup-pay-mode">
+          <option value="cash">Cash</option>
+          <option value="upi">UPI</option>
+          <option value="bank_transfer">Bank Transfer</option>
+          <option value="cheque">Cheque</option>
+          <option value="card">Card</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Transaction Ref</label><input id="sup-pay-ref" /></div>
+      <div class="form-group"><label>Notes</label><input id="sup-pay-notes" /></div>
+    </div>
+    <div style="display:flex; gap:10px; margin-top:8px;">
+      <button type="submit" class="btn btn-primary">Save Payment</button>
+      <button type="button" class="btn btn-danger-outline" onclick="document.getElementById('inv-pay-card').style.display='none'">Cancel</button>
+    </div>
+  </form>
+  <div id="sup-pay-msg" style="font-size:13px; margin-top:10px; color: var(--color-text-muted);"></div>
+</div>
+
+<div class="card" id="inv-list-card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+    <h3 style="margin:0;">Purchase Invoice List</h3>
+    <input id="inv-search" type="search" placeholder="Search number, supplier, company…"
+      oninput="filterInvoices()"
+      style="padding:8px 12px; border:1px solid var(--color-border); border-radius:6px; font-size:14px; min-width:240px;" />
+  </div>
+  <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:12px; flex-wrap:wrap;">
+    <div class="form-group" style="margin:0;"><label>From</label><input id="inv-from" type="date" onchange="invDateChanged()" /></div>
+    <div class="form-group" style="margin:0;"><label>To</label><input id="inv-to" type="date" onchange="invDateChanged()" /></div>
+    <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; padding-bottom:8px;">
+      <input type="checkbox" id="inv-fy-only" onchange="toggleInvFy()" />
+      <span>Current FY only</span>
+    </label>
+    <button class="btn btn-secondary btn-sm" type="button" onclick="resetInvoiceFilters()" title="Clear search, dates and FY toggle" style="margin-bottom:6px;">↺ Reset</button>
+  </div>
+  <div id="inv-table"></div>
+  <p id="inv-count" style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"></p>
+</div>
+</div>
+
+<div class="card" id="inv-sales-wrap" style="display:none;">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+    <h3 style="margin:0;">Sales Invoice List</h3>
+    <input id="sales-search" type="search" placeholder="Search number, customer, challan…"
+      oninput="filterSalesInvoices()"
+      style="padding:8px 12px; border:1px solid var(--color-border); border-radius:6px; font-size:14px; min-width:240px;" />
+    <button class="btn btn-secondary btn-sm" type="button" onclick="resetSalesInvoiceFilters()" title="Clear the search box">↺ Reset</button>
+  </div>
+  <p style="font-size:12px; color:var(--color-text-muted); margin-top:0;">Tax invoices raised from delivery challans. Print, WhatsApp and email live on the challan — use Open challan.</p>
+  <div id="sales-table"></div>
+  <p id="sales-count" style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"></p>
+</div>
+
+<script>
+(function(){
+  let allInvoices = [];
+  let allSuppliers = [];
+  let allMaterials = [];
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function renderInvoiceTable(list) {
+    const rows = (list || []).map(v => ({
+      id: v.id,
+      _archived: !!v.is_archived,
+      number: (v.is_archived ? '<span class="badge badge-archived">Archived</span> ' : "") + (v.invoice_number || ""),
+      date: window.UI.dateWithTime(v.invoice_date, v.created_at),
+      dateKey: window.UI.tsKey(v.invoice_date, v.created_at),
+      supplier: v.supplier_name || "—",
+      company: v.supplier_company || "—",
+      total: window.UI.money(v.total_amount),
+      paid: window.UI.money(v.paid_amount),
+      outstanding: window.UI.money(v.outstanding_amount),
+      actions: `<span class="row-actions"><button class="btn btn-sm btn-info" onclick="viewInvoice(${v.id})">View</button>` +
+        (!v.is_archived ? ((() => {
+          // A fully-paid invoice keeps its Pay button so the blocked click
+          // can explain itself instead of opening a form that refuses.
+          const out = parseFloat(v.outstanding_amount) || 0;
+          const reason = out <= 0
+            ? "This purchase invoice is fully paid. There is nothing left to pay."
+            : "";
+          return `<button class="btn btn-sm btn-success" data-approve${reason ? ` data-block-reason="${reason}"` : ""} onclick="openSupplierPaymentForm(${v.id})">Pay</button>`;
+        })()) : "") +
+        (v.is_archived
+          ? `<button class="btn btn-sm btn-restore" onclick="restoreInvoice(${v.id})">Restore</button>`
+          : `<button class="btn btn-sm btn-danger" onclick="deleteInvoice(${v.id})">Archive</button>`) +
+        `</span>`
+    }));
+    const container = document.getElementById("inv-table");
+    if (container && window.UI.renderTable) {
+      window.UI.renderTable(container, rows, [
+        {key:"number",label:"Number"},{key:"date",label:"Date"},{key:"supplier",label:"Supplier"},
+        {key:"company",label:"Company"},
+        {key:"total",label:"Total (₹)"},{key:"paid",label:"Paid (₹)"},{key:"outstanding",label:"Outstanding (₹)"},
+        {key:"actions",label:"Actions"}
+      ], { rowClass: (r) => (r._archived ? "row-archived" : ""), pageSize: 15, sortValue: { number: (r) => window.UI.docNumKey(r.number), date: r => r.dateKey } });
+    }
+    const count = document.getElementById("inv-count");
+    if (count) count.textContent = "Showing " + rows.length + " of " + allInvoices.length + " purchase invoices";
+  }
+
+  // See challans.html: the FY checkbox is only ever changed by the user, and
+  // the choice persists across navigation instead of resetting itself.
+  const INV_FILTER_KEY = "invoices-filters";
+
+  function saveInvoiceFilters() {
+    window.UI.saveFilterState(INV_FILTER_KEY, {
+      fyOnly: document.getElementById("inv-fy-only").checked,
+      from: document.getElementById("inv-from").value,
+      to: document.getElementById("inv-to").value,
+    });
+  }
+
+  function restoreInvoiceFilters() {
+    const s = window.UI.loadFilterState(INV_FILTER_KEY);
+    if (!s) return;
+    const box = document.getElementById("inv-fy-only");
+    if (box && typeof s.fyOnly === "boolean") box.checked = s.fyOnly;
+    if (typeof s.from === "string") document.getElementById("inv-from").value = s.from;
+    if (typeof s.to === "string") document.getElementById("inv-to").value = s.to;
+    if (box && box.checked) window.UI.dropInvertedRange("inv-from", "inv-to");
+  }
+
+  window.toggleInvFy = function () {
+    const box = document.getElementById("inv-fy-only");
+    if (box.checked) window.UI.applyFyStart("inv-from", "inv-to");
+    else document.getElementById("inv-from").value = "";
+    saveInvoiceFilters();
+    window.filterInvoices();
+  };
+
+  window.invDateChanged = function () {
+    saveInvoiceFilters();
+    window.filterInvoices();
+  };
+
+  window.filterInvoices = function () {
+    const q = (document.getElementById("inv-search").value || "").trim().toLowerCase();
+    const from = document.getElementById("inv-from").value;
+    const to = document.getElementById("inv-to").value;
+    let list = allInvoices.filter(v => window.UI.inDateRange(v.invoice_date, from, to));
+    if (!q) { renderInvoiceTable(list); return; }
+    const filtered = list.filter(v => [v.invoice_number, v.supplier_name, v.supplier_company, v.payment_status, v.total_amount]
+      .map(x => String(x == null ? "" : x).toLowerCase()).some(x => x.includes(q)));
+    renderInvoiceTable(filtered);
+  };
+
+  async function loadInvoices() {
+    try {
+      const data = await window.UI.api("/purchase-invoices" + (document.getElementById("inv-show-archived").checked ? "?include_archived=true" : ""));
+      allInvoices = data || [];
+      const q = document.getElementById("inv-search");
+      window.filterInvoices();
+    } catch (e) {
+      console.error("Invoices", e);
+      document.getElementById("inv-table").innerHTML = "<p>Failed to load.</p>";
+    }
+  }
+
+  // --- Sales (tax) invoices: read-only list over GET /invoices ------------
+  let allSalesInvoices = [];
+
+  window.switchInvoiceTab = function (which) {
+    const sales = which === "sales";
+    document.getElementById("inv-purchase-wrap").style.display = sales ? "none" : "";
+    document.getElementById("inv-sales-wrap").style.display = sales ? "" : "none";
+    // The Show archived / + New actions belong to the purchase view only.
+    const actions = document.getElementById("inv-purchase-actions");
+    if (actions) actions.style.display = sales ? "none" : "flex";
+    document.getElementById("inv-tab-purchase").className =
+      "btn btn-sm " + (sales ? "btn-secondary" : "btn-primary");
+    document.getElementById("inv-tab-sales").className =
+      "btn btn-sm " + (sales ? "btn-primary" : "btn-secondary");
+    if (sales) loadSalesInvoices();
+  };
+
+  // Clean sweep of the purchase-invoice filters (search, dates, FY toggle);
+  // the Show archived toggle stays where it is — it reloads the list.
+  window.resetInvoiceFilters = function () {
+    document.getElementById("inv-search").value = "";
+    document.getElementById("inv-from").value = "";
+    document.getElementById("inv-to").value = "";
+    const fy = document.getElementById("inv-fy-only");
+    if (fy) fy.checked = false;
+    // Overwrite the saved state with the blank set so a reload doesn't
+    // resurrect the filters that were just cleared.
+    saveInvoiceFilters();
+    window.filterInvoices();
+  };
+
+  window.filterSalesInvoices = function () {
+    const q = (document.getElementById("sales-search").value || "").trim().toLowerCase();
+    const list = !q ? allSalesInvoices : allSalesInvoices.filter(v =>
+      [v.invoice_number, v.customer_name, v.challan_number, v.grand_total]
+        .map(x => String(x == null ? "" : x).toLowerCase()).some(x => x.includes(q)));
+    renderSalesTable(list);
+  };
+
+  window.resetSalesInvoiceFilters = function () {
+    document.getElementById("sales-search").value = "";
+    window.filterSalesInvoices();
+  };
+
+  function renderSalesTable(list) {
+    const rows = (list || []).map(v => ({
+      id: v.id,
+      number: v.invoice_number || "",
+      date: window.UI.dateWithTime(v.invoice_date, v.created_at),
+      dateKey: window.UI.tsKey(v.invoice_date, v.created_at),
+      customer: v.customer_name || "—",
+      challan: v.challan_number || "—",
+      total: window.UI.money(v.grand_total),
+      gst: window.UI.money((parseFloat(v.cgst) || 0) + (parseFloat(v.sgst) || 0) + (parseFloat(v.igst) || 0)),
+      actions: `<span class="row-actions">` +
+        `<button class="btn btn-sm btn-export" onclick="downloadSalesPdf(${v.id}, '${esc(v.invoice_number || "")}')">PDF</button>` +
+        (v.challan_id
+          ? `<a class="btn btn-sm btn-secondary" href="#/challans?challan=${v.challan_id}">Open challan</a>`
+          : "") +
+        `</span>`
+    }));
+    const container = document.getElementById("sales-table");
+    if (container && window.UI.renderTable) {
+      window.UI.renderTable(container, rows, [
+        {key:"number",label:"Number"},{key:"date",label:"Date"},{key:"customer",label:"Customer"},
+        {key:"challan",label:"Challan"},{key:"total",label:"Total (₹)"},{key:"gst",label:"GST (₹)"},
+        {key:"actions",label:"Actions"}
+      ], { pageSize: 15, sortValue: { number: (r) => window.UI.docNumKey(r.number), date: r => r.dateKey } });
+    }
+    const count = document.getElementById("sales-count");
+    if (count) count.textContent = "Showing " + rows.length + " of " + allSalesInvoices.length + " sales invoices";
+  }
+
+  async function loadSalesInvoices() {
+    try {
+      allSalesInvoices = await window.UI.api("/invoices") || [];
+      window.filterSalesInvoices();
+    } catch (e) {
+      console.error("Sales invoices", e);
+      document.getElementById("sales-table").innerHTML = "<p>Failed to load.</p>";
+    }
+  }
+
+  window.downloadSalesPdf = async function (id, number) {
+    try {
+      await window.UI.download("/invoices/" + id + "/pdf", "sales_invoice_" + (number || id) + ".pdf");
+    } catch (e) {
+      window.UI.notify(e.message || "Could not download the PDF.", "error");
+    }
+  };
+
+  async function loadDropdowns() {
+    try {
+      allSuppliers = await window.UI.api("/suppliers") || [];
+      const sel = document.getElementById("inv-supplier");
+      // Company name in the option text: the quickSelect search box matches
+      // option text, so searching by company finds the supplier too.
+      sel.innerHTML = '<option value="">Select supplier…</option>' +
+        window.UI.sortByName(allSuppliers).map(s =>
+          `<option value="${s.id}">${esc(s.name)}${s.company_name ? " — " + esc(s.company_name) : ""}</option>`).join("");
+      if (window.UI.quickSelect) window.UI.quickSelect(sel, "Type supplier name…");
+      if (!sel.dataset.detailsWired) { sel.dataset.detailsWired = "1"; sel.addEventListener("change", updateSupplierDetails); }
+    } catch (e) { console.error("Suppliers", e); }
+    try {
+      allMaterials = await window.UI.api("/raw-materials") || [];
+      // Rows built before /raw-materials resolved would keep no materials:
+      // refill any open rows, keeping picks.
+      try { refreshAllInvoiceMatDropdowns(); } catch (e) {}
+    } catch (e) { console.error("Materials", e); }
+  }
+
+  // Supplier card under the select: company, GST, phone, address and what is
+  // already owed — visible the moment a supplier is picked. quickSelect
+  // dispatches a real change event, so this fires for typed picks too.
+  window.updateSupplierDetails = function () {
+    const box = document.getElementById("inv-supplier-details");
+    if (!box) return;
+    const id = parseInt(document.getElementById("inv-supplier").value);
+    const s = allSuppliers.find(x => x.id === id);
+    if (!s) { box.style.display = "none"; box.innerHTML = ""; return; }
+    const bits = [];
+    if (s.company_name) bits.push("<strong>" + esc(s.company_name) + "</strong>");
+    if (s.contact_number) bits.push("📞 " + esc(s.contact_number));
+    if (s.gst_no) bits.push("GST: " + esc(s.gst_no));
+    if (s.address) bits.push(esc(s.address));
+    if (s.outstanding_balance != null) bits.push("Outstanding: ₹" + window.UI.money(s.outstanding_balance));
+    box.innerHTML = bits.join(" &nbsp;·&nbsp; ");
+    box.style.display = bits.length ? "block" : "none";
+  };
+
+  // Rebuild every item row's material dropdown from the latest list, keeping
+  // each row's selection (mirrors the challan product-row refresh).
+  function refreshAllInvoiceMatDropdowns() {
+    const opts = '<option value="">Select…</option>' +
+      window.UI.sortByName(allMaterials).map(m =>
+        `<option value="${m.id}" data-rate="${m.purchase_rate || 0}" data-unit="${esc(m.unit || "kg")}">${esc(m.name)} (${esc(m.unit || "kg")})</option>`).join("");
+    document.querySelectorAll(".inv-mat").forEach(s => {
+      const cur = s.value ? s.value : "";
+      s.innerHTML = opts;
+      if (cur) s.value = cur;
+    });
+  }
+
+  // The line-item list scrolls inside a capped box so + Add Item, the Total
+  // and Save stay on screen however many lines are entered. The cap is
+  // measured from the live layout rather than hard-coded, so it stays right
+  // when the window is resized or the header above it changes.
+  window.fitInvoiceItems = function () {
+    const wrap = document.getElementById("inv-items-wrap");
+    const tail = document.getElementById("inv-items-tail");
+    const form = document.getElementById("inv-form");
+    if (!wrap || !form || form.style.display === "none") return;
+    const top = wrap.getBoundingClientRect().top;
+    const tailH = tail ? tail.getBoundingClientRect().height : 0;
+    const avail = window.innerHeight - top - tailH - 24; // 24px of breathing room
+    wrap.style.maxHeight = Math.max(140, avail) + "px";
+  };
+  window.addEventListener("resize", function () { window.fitInvoiceItems(); });
+
+  // The invoice list steps aside while the form is open so the whole window
+  // belongs to the line items; every exit path has to bring it back.
+  function setInvoiceListVisible(visible) {
+    const card = document.getElementById("inv-list-card");
+    if (card) card.style.display = visible ? "" : "none";
+  }
+
+  window.openNewInvoiceForm = async function () {
+    // Always refresh: a supplier or raw material added on another page during
+    // this session would otherwise never appear in a new invoice.
+    try { await loadDropdowns(); } catch (e) {}
+    document.getElementById("new-inv-form").reset();
+    window.updateSupplierDetails();
+    document.getElementById("inv-date").valueAsDate = new Date();
+    document.getElementById("inv-items").innerHTML = "";
+    invTotalTouched = false;
+    addInvoiceRow();
+    updateInvoiceTotal();
+    document.getElementById("inv-msg").textContent = "";
+    // One view at a time: the list (and any open detail/payment panel) steps
+    // aside so nothing competes with the line items for the window.
+    document.getElementById("inv-detail-card").style.display = "none";
+    document.getElementById("inv-pay-card").style.display = "none";
+    setInvoiceListVisible(false);
+    document.getElementById("inv-form").style.display = "block";
+    fitInvoiceItems();
+    document.getElementById("inv-supplier").focus();
+  };
+
+  window.cancelInvoiceForm = function () {
+    invTotalTouched = false;
+    document.getElementById("new-inv-form").reset();
+    window.updateSupplierDetails();
+    document.getElementById("inv-form").style.display = "none";
+    setInvoiceListVisible(true);
+  };
+
+  window.addInvoiceRow = function () {
+    const wrap = document.getElementById("inv-items");
+    const div = document.createElement("div");
+    div.className = "form-row inv-item-row";
+    div.style.cssText = "align-items:flex-end; margin-bottom:8px; flex-wrap:wrap;";
+    const matOpts = window.UI.sortByName(allMaterials).map(m =>
+      `<option value="${m.id}" data-rate="${m.purchase_rate || 0}" data-unit="${esc(m.unit || "kg")}">${esc(m.name)} (${esc(m.unit || "kg")})</option>`).join("");
+    div.innerHTML =
+      `<div class="form-group" style="flex:2.4; min-width:240px;"><label>Material</label><select class="inv-mat" required><option value="">Select…</option>${matOpts}</select></div>` +
+      `<div class="form-group" style="max-width:76px;"><label>Qty</label><input class="inv-qty" type="number" step="0.001" value="" min="0" placeholder="0" oninput="updateInvoiceTotal()" /><div class="inv-unit" style="font-size:11px; color:var(--color-text-muted); margin-top:2px; min-height:15px;"></div></div>` +
+      `<div class="form-group" title="Rate per unit for this line" style="max-width:104px;"><label>Rate</label><div style="display:flex; align-items:stretch;"><span class="rupee-prefix">₹</span><input class="inv-rate money-input" type="number" step="0.01" min="0" style="flex:1; min-width:70px;" oninput="updateInvoiceTotal()" /></div></div>` +
+      `<div class="form-group" style="max-width:64px;"><label>GST %</label><input class="inv-gst" type="number" step="0.01" min="0" oninput="updateInvoiceTotal()" /></div>` +
+      `<div class="form-group" style="max-width:90px;"><label>Transport ₹</label><div class="inv-tpk" style="font-weight:600; white-space:nowrap; padding:9px 0;" title="This line's share of the transport charges (weight × ₹/kg)">—</div></div>` +
+      `<div class="form-group" style="max-width:90px;"><label>Other ₹</label><div class="inv-opk" style="font-weight:600; white-space:nowrap; padding:9px 0;" title="This line's share of the other charges (weight × ₹/kg)">—</div></div>` +
+      `<div class="form-group" style="max-width:100px; min-width:100px;"><label>Cost ₹/kg</label><div class="inv-cpk" style="font-weight:700; white-space:nowrap; padding:9px 0;" title="Rate + GST + this line's share of transport & other charges — what each kg really cost you">—</div></div>` +
+      `<div class="form-group" style="flex:0 0 auto;"><label>&nbsp;</label><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('.inv-item-row').remove(); updateInvoiceTotal(); fitInvoiceItems();">✕</button></div>`;
+    wrap.appendChild(div);
+    const matSel = div.querySelector(".inv-mat");
+    if (window.UI.quickSelect) window.UI.quickSelect(matSel, "Type material…");
+    matSel.addEventListener("change", () => {
+      const opt = matSel.selectedOptions[0];
+      // A material with no saved rate comes back from the API as the string
+      // "0.00" — truthy, so a plain `if (opt.dataset.rate)` parks a spurious
+      // 0.00 in the box. Only a real rate is worth prefilling; anything else
+      // leaves the field clean for the operator to type.
+      const raw = opt ? opt.dataset.rate : "";
+      const rate = parseFloat(raw);
+      div.querySelector(".inv-rate").value = (isFinite(rate) && rate > 0) ? raw : "";
+      div.querySelector(".inv-unit").textContent = (opt && opt.value) ? (opt.dataset.unit || "kg") : "";
+      updateInvoiceTotal();
+    });
+    updateInvoiceTotal();
+  };
+
+  // The total box follows the computed goods value until the operator types
+  // an override; the override then survives line edits until the form is
+  // reopened or cancelled.
+  let invTotalTouched = false;
+
+  window.updateInvoiceTotal = function () {
+    // Rule: the payable total is the goods value (+ GST, − discount).
+    // Transport and other charges are your costing only; they never change
+    // what the supplier is owed. They do land on every line's per-kg share:
+    // pro-rata over kg means each kg carries the same charge share, so the
+    // per-kg columns are the same on every line of the invoice.
+    let goods = 0;
+    let kgSum = 0;
+    document.querySelectorAll(".inv-item-row").forEach(r => {
+      // Only lines with a material chosen participate: an empty row must not
+      // dilute the per-kg charge split with its (blank) quantity.
+      const matId = r.querySelector(".inv-mat").value;
+      const q = parseFloat(r.querySelector(".inv-qty").value) || 0;
+      const rate = parseFloat(r.querySelector(".inv-rate").value) || 0;
+      const gst = parseFloat(r.querySelector(".inv-gst").value) || 0;
+      if (!matId) {
+        const dash = (cls) => { const el = r.querySelector(cls); if (el) el.textContent = "—"; };
+        dash(".inv-tpk"); dash(".inv-opk"); dash(".inv-cpk");
+        return;
+      }
+      goods += q * rate * (1 + gst / 100);
+      kgSum += q;
+    });
+    const transport = parseFloat(document.getElementById("inv-transport").value) || 0;
+    const other = parseFloat(document.getElementById("inv-other").value) || 0;
+    const tpk = kgSum ? transport / kgSum : 0;
+    const opk = kgSum ? other / kgSum : 0;
+    document.querySelectorAll(".inv-item-row").forEach(r => {
+      const matId = r.querySelector(".inv-mat").value;
+      if (!matId) return; // empty line: first loop already drew the dashes
+      const q = parseFloat(r.querySelector(".inv-qty").value) || 0;
+      const rate = parseFloat(r.querySelector(".inv-rate").value) || 0;
+      const gst = parseFloat(r.querySelector(".inv-gst").value) || 0;
+      const set = (cls, v) => {
+        const el = r.querySelector(cls);
+        if (el) el.textContent = (v === null) ? "—" : "₹ " + (Math.round(v * 100) / 100).toFixed(2);
+      };
+      if (!q) {
+        // A line with no weight carries no share yet — show dashes, not a
+        // misleading ₹0.00 cost column.
+        set(".inv-tpk", null); set(".inv-opk", null); set(".inv-cpk", null);
+        return;
+      }
+      // The columns show this line's ALLOCATED share of the charges
+      // (weight × ₹/kg), so two lines with different weights show different
+      // amounts even though the ₹/kg rate behind them is the same.
+      set(".inv-tpk", tpk * q);
+      set(".inv-opk", opk * q);
+      set(".inv-cpk", rate * (1 + gst / 100) + tpk + opk);
+    });
+    const disc = parseFloat(document.getElementById("inv-disc").value) || 0;
+    const payable = Math.max(0, goods - disc);
+    // The total follows the goods calc unless you typed a figure of your own
+    // (the paper invoice); your typed figure survives later line edits until
+    // the form is reopened.
+    const totalEl = document.getElementById("inv-total-edit");
+    if (totalEl && !invTotalTouched) totalEl.value = payable.toFixed(2);
+    // Paid shows its effect immediately: what would still be owed after this
+    // invoice is saved (typed total or the computed one, minus what you paid).
+    const outHint = document.getElementById("inv-out-hint");
+    if (outHint) {
+      const effectiveTotal = totalEl && totalEl.value !== "" ? (parseFloat(totalEl.value) || 0) : payable;
+      const paid = parseFloat(document.getElementById("inv-paid").value) || 0;
+      const outstanding = Math.max(0, effectiveTotal - paid);
+      outHint.textContent = "Outstanding ₹ " + (Math.round(outstanding * 100) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      outHint.style.color = outstanding > 0 ? "var(--color-warning, #b45309)" : "var(--color-success)";
+    }
+  };
+
+  ["inv-other", "inv-disc", "inv-transport", "inv-paid"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", updateInvoiceTotal);
+  });
+  (() => {
+    const el = document.getElementById("inv-total-edit");
+    if (el) el.addEventListener("input", () => { invTotalTouched = true; });
+  })();
+
+  window.saveInvoice = async function (event) {
+    if (event) event.preventDefault();
+    const __release = window.UI.submitGuard(event);
+    if (!__release) return;
+    const msg = document.getElementById("inv-msg");
+    const items = [];
+    document.querySelectorAll(".inv-item-row").forEach(r => {
+      const matId = r.querySelector(".inv-mat").value;
+      if (matId) items.push({
+        raw_material_id: parseInt(matId),
+        quantity: parseFloat(r.querySelector(".inv-qty").value) || 0,
+        rate: parseFloat(r.querySelector(".inv-rate").value) || 0,
+        gst_percent: parseFloat(r.querySelector(".inv-gst").value) || 0,
+      });
+    });
+    if (!items.length) { msg.textContent = "Add at least one line item."; msg.style.color = "var(--color-danger)"; __release(); return; }
+    const payload = {
+      supplier_id: parseInt(document.getElementById("inv-supplier").value),
+      invoice_number: (document.getElementById("inv-number").value || "").trim(),
+      invoice_date: document.getElementById("inv-date").value,
+      paid_amount: parseFloat(document.getElementById("inv-paid").value) || 0,
+      other_charges: parseFloat(document.getElementById("inv-other").value) || 0,
+      transport_charges: parseFloat(document.getElementById("inv-transport").value) || 0,
+      discount: parseFloat(document.getElementById("inv-disc").value) || 0,
+      notes: document.getElementById("inv-notes").value,
+      items: items,
+    };
+    // Total is auto-filled with the goods value; only when you typed a figure
+    // of your own does it override (dues then key off the paper invoice).
+    const typedTotal = document.getElementById("inv-total-edit").value;
+    if (invTotalTouched && typedTotal !== "") payload.total_amount = parseFloat(typedTotal) || 0;
+    if (!payload.supplier_id) { msg.textContent = "Select a supplier."; msg.style.color = "var(--color-danger)"; __release(); return; }
+    try {
+      const res = await fetch("/purchase-invoices", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+      msg.textContent = "Purchase invoice " + (data.invoice_number || "") + " saved. Stock updated.";
+      msg.style.color = "var(--color-success)";
+      document.getElementById("inv-form").style.display = "none";
+      document.getElementById("new-inv-form").reset();
+      setInvoiceListVisible(true);
+      loadInvoices();
+      __release();
+    } catch (e) {
+      msg.textContent = (e.message || "Error");
+      msg.style.color = "var(--color-danger)";
+      __release();
+    }
+  };
+
+  // Same exit pattern as challans.html: the header button and the foot one
+  // share one exit that also closes the Pay Supplier panel if it is open —
+  // the list view has nothing to fill it against.
+  window.backToInvoiceList = function () {
+    document.getElementById("inv-detail-card").style.display = "none";
+    const pay = document.getElementById("inv-pay-card");
+    if (pay) pay.style.display = "none";
+    setInvoiceListVisible(true);
+  };
+
+  window.viewInvoice = async function (id, highlightPayId) {    const card = document.getElementById("inv-detail-card");
+    const body = document.getElementById("inv-detail-body");
+    try {
+      const d = await window.UI.api("/purchase-invoices/" + id);
+      let itemsHtml = "<p>No items.</p>";
+      if (d.items && d.items.length) {
+        itemsHtml = "<table><thead><tr><th>Material</th><th>Qty</th><th>Rate</th><th>GST%</th><th>Transport ₹</th><th>Other ₹</th><th>Total Cost ₹/kg</th><th>Amount</th></tr></thead><tbody>" +
+          d.items.map(it => `<tr><td>${esc(it.material_name || it.raw_material_id)}</td><td>${window.UI.trimNum(it.quantity)}</td><td>${window.UI.money(it.rate)}</td><td>${window.UI.trimNum(it.gst_percent)}</td><td>${window.UI.money(it.transport_amount)}</td><td>${window.UI.money(it.other_amount)}</td><td title="Rate + GST + this line's share of transport & other charges — the same for every kg of the invoice">${window.UI.money(it.total_cost_per_kg)}</td><td>${window.UI.money(it.amount)}</td></tr>`).join("") +
+          "</tbody></table>";
+      }
+      let payHtml = "";
+      try {
+        const pays = await window.UI.api("/supplier-payments/invoice/" + id + (document.getElementById("inv-show-archived").checked ? "?include_archived=true" : ""));
+        if (pays && pays.length) {
+          payHtml = "<h4 style='font-size:14px; margin:12px 0 6px;'>Payments Made</h4><div class='table-wrap'><table><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Ref</th><th></th></tr></thead><tbody>" +
+            pays.map(p => `<tr data-pay-id="${p.id}"${p.is_archived ? " class='row-archived'" : ""}><td>${p.is_archived ? "<span class='badge badge-archived'>Archived</span> " : ""}${window.UI.dateWithTime(p.payment_date, p.created_at)}</td><td>${window.UI.money(p.amount)}</td><td>${esc(p.payment_mode || "—")}</td><td>${esc(p.transaction_ref || "—")}</td><td>${p.is_archived ? `<button class="btn btn-sm btn-restore" onclick="restoreInvoicePayment(${p.id}, ${id})">Restore</button>` : `<button class="btn btn-sm btn-danger" onclick="deleteInvoicePayment(${p.id}, ${id})">Archive</button>`}</td></tr>`).join("") +
+            "</tbody></table></div>";
+        }
+      } catch (e) { console.error("Payments", e); }
+      body.innerHTML =
+        "<div style='display:grid; grid-template-columns: 160px 1fr; gap:4px 12px; margin-bottom:12px;'>" +
+        "<strong>Number</strong><span>" + esc(d.invoice_number) + "</span>" +
+        "<strong>Date</strong><span>" + window.UI.dateWithTime(d.invoice_date, d.created_at) + "</span>" +
+        "<strong>Supplier</strong><span>" + esc(d.supplier_name || "—") + "</span>" +
+        "<strong>Company</strong><span>" + esc(d.supplier_company || "—") + "</span>" +
+        "<strong>Total</strong><span>" + window.UI.money(d.total_amount) + "</span>" +
+        "<strong>Transport Charges</strong><span>" + window.UI.money(d.transport_charges) + "</span>" +
+        "<strong>Other Charges</strong><span>" + window.UI.money(d.other_charges) + "</span>" +
+        "<strong>Paid</strong><span>" + window.UI.money(d.paid_amount) + "</span>" +
+        "<strong>Outstanding</strong><span>" + window.UI.money(d.outstanding_amount) + "</span>" +
+        "<strong>Status</strong><span>" + esc(d.payment_status) + "</span>" +
+        "</div><div class='table-wrap'>" + itemsHtml + "</div>" + payHtml;
+      card.style.display = "block";
+      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      // Global-search direct open: land on the exact payment row.
+      if (highlightPayId) {
+        const row = body.querySelector('tr[data-pay-id="' + highlightPayId + '"]');
+        if (row) {
+          row.style.background = "#fef9c3";
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }
+    } catch (e) {
+      body.innerHTML = "<p style='color:var(--color-danger)'>Could not load details: " + esc(e.message || e) + "</p>";
+      card.style.display = "block";
+    }
+  };
+
+  window.deleteInvoicePayment = async function (payId, invoiceId) {
+    if (!confirm("Archive this payment? Balances and reports stay unchanged.")) return;
+    try {
+      const res = await fetch("/supplier-payments/" + payId, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed");
+      window.UI.notify("Payment archived, balances unchanged", "success");
+      loadInvoices();
+      viewInvoice(invoiceId);
+    } catch (e) {
+      window.UI.notify(e.message || "Archive failed", "error");
+    }
+  };
+
+  window.restoreInvoicePayment = async function (payId, invoiceId) {
+    try {
+      const res = await fetch("/supplier-payments/" + payId + "/restore", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error("Failed");
+      window.UI.notify(data.detail || (data.status === "not archived"
+        ? "That payment was not archived." : "Payment restored."), "success");
+      loadInvoices();
+      if (data.invoice_also_restored && invoiceId) viewInvoice(invoiceId);
+    } catch (e) {
+      window.UI.notify(e.message || "Restore failed", "error");
+    }
+  };
+
+  window.deleteInvoice = async function (id) {
+    if (!confirm("Archive this purchase invoice?\n\nIt will be hidden from this list but the stock it added and the amount owed stay in the totals for the audit trail.")) return;
+    const msg = document.getElementById("inv-msg");
+    try {
+      // UI.api carries the auth token; a bare fetch does not and the server
+      // answers 401, so archiving used to fail silently every time.
+      await window.UI.api("/purchase-invoices/" + id, { method: "DELETE" });
+      msg.textContent = "Purchase invoice archived. Stock and payable retained.";
+      msg.style.color = "var(--color-success)";
+      loadInvoices();
+    } catch (e) {
+      msg.textContent = (e && e.message) || "Archive failed.";
+      msg.style.color = "var(--color-danger)";
+    }
+  };
+
+  window.restoreInvoice = async function (id) {
+    const msg = document.getElementById("inv-msg");
+    try {
+      const data = await window.UI.api("/purchase-invoices/" + id + "/restore", { method: "POST", body: {} });
+      msg.textContent = data.status === "not archived"
+        ? "That purchase invoice was not archived."
+        : "Purchase invoice restored.";
+      msg.style.color = "var(--color-success)";
+      loadInvoices();
+    } catch (e) {
+      msg.textContent = e.message || "Restore failed.";
+      msg.style.color = "var(--color-danger)";
+    }
+  };
+
+  let payInvoiceId = null;
+
+  window.openSupplierPaymentForm = async function (id) {
+    const msg = document.getElementById("sup-pay-msg");
+    try {
+      const d = await window.UI.api("/purchase-invoices/" + id);
+      const outstanding = parseFloat(d.outstanding_amount) || 0;
+      if (outstanding <= 0) {
+        window.UI.infoDialog("Payment unavailable",
+          "Purchase invoice " + (d.invoice_number || "") + " is fully paid. There is nothing left to pay.");
+        return;
+      }
+      payInvoiceId = id;
+      document.getElementById("sup-pay-inv-no").textContent = d.invoice_number || ("#" + id);
+      document.getElementById("sup-pay-info").textContent =
+        (d.supplier_name || "") + " | Total ₹ " + (d.total_amount || 0) + " | Paid ₹ " + (d.paid_amount || 0) + " | Outstanding ₹ " + (d.outstanding_amount || 0);
+      document.getElementById("sup-pay-amount").value = d.outstanding_amount;
+      document.getElementById("sup-pay-amount").max = d.outstanding_amount;
+      document.getElementById("sup-pay-date").valueAsDate = new Date();
+      msg.textContent = "";
+      document.getElementById("inv-pay-card").style.display = "block";
+      document.getElementById("inv-pay-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (e) {
+      document.getElementById("inv-msg").textContent = "Could not load purchase invoice: " + (e.message || e);
+    }
+  };
+
+  window.saveSupplierPayment = async function (event) {
+    if (event) event.preventDefault();
+    const __release = window.UI.submitGuard(event);
+    if (!__release) return;
+    const msg = document.getElementById("sup-pay-msg");
+    const payload = {
+      purchase_invoice_id: payInvoiceId,
+      amount: parseFloat(document.getElementById("sup-pay-amount").value) || 0,
+      payment_date: document.getElementById("sup-pay-date").value,
+      payment_mode: document.getElementById("sup-pay-mode").value,
+      transaction_ref: document.getElementById("sup-pay-ref").value,
+      notes: document.getElementById("sup-pay-notes").value,
+    };
+    try {
+      const res = await fetch("/supplier-payments", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+      msg.textContent = "Payment of ₹ " + (data.amount || "") + " recorded. Outstanding: ₹ " + (data.outstanding_after != null ? data.outstanding_after : "0");
+      msg.style.color = "var(--color-success)";
+      document.getElementById("sup-pay-form").reset();
+      document.getElementById("inv-pay-card").style.display = "none";
+      loadInvoices();
+      __release();
+    } catch (e) {
+      msg.textContent = (e.message || "Error");
+      msg.style.color = "var(--color-danger)";
+      __release();
+    }
+  };
+
+  // See challans.html: inline onchange handlers resolve in the global scope.
+  window.loadInvoices = loadInvoices;
+
+  restoreInvoiceFilters();
+  loadDropdowns();
+  if (window.UI.applySearchDeepLink) window.UI.applySearchDeepLink("inv-search");
+  loadInvoices();
+  // Searchable dropdowns on both invoice tabs. Each mirrors everything its
+  // tab's text search matches — purchase: number, supplier, company, status;
+  // sales: number, customer, challan number.
+  if (window.UI.searchSuggest) {
+    window.UI.searchSuggest(document.getElementById("inv-search"), () => {
+      const out = new Set();
+      (allInvoices || []).forEach((v) => {
+        if (v.invoice_number) out.add(String(v.invoice_number));
+        if (v.supplier_name) out.add(String(v.supplier_name));
+        if (v.supplier_company) out.add(String(v.supplier_company));
+        if (v.payment_status) out.add(String(v.payment_status).toLowerCase());
+      });
+      return Array.from(out);
+    });
+    window.UI.searchSuggest(document.getElementById("sales-search"), () => {
+      const out = new Set();
+      (allSalesInvoices || []).forEach((v) => {
+        if (v.invoice_number) out.add(String(v.invoice_number));
+        if (v.customer_name) out.add(String(v.customer_name));
+        if (v.challan_number) out.add(String(v.challan_number));
+      });
+      return Array.from(out);
+    });
+  }
+  if (window.location.hash.includes("new=1")) window.openNewInvoiceForm();
+  // Global-search direct open: #/invoices?invoice=<id>&payment=<pay-id>.
+  (function () {
+    const h = window.location.hash || "";
+    const pay = (h.match(/[?&]payment=(\d+)/) || [])[1];
+    const inv = (h.match(/[?&]invoice=(\d+)/) || [])[1];
+    if (pay && inv) window.viewInvoice(parseInt(inv, 10), parseInt(pay, 10));
+  })();
+})();
+</script>

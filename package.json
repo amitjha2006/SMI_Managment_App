@@ -1,0 +1,12 @@
+{
+  "name": "shresth-masala-application",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "graphify": "opencode graphify",
+    "plugin:list": "opencode plugin list"
+  },
+  "devDependencies": {
+    "@opencode/graphify": "latest"
+  }
+}

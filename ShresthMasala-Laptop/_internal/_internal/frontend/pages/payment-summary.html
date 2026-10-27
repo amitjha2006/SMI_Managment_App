@@ -1,0 +1,163 @@
+<!-- Payment Received Summary: register of customer receipts in range. -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:6px;">
+    <h2 style="font-size: 16px; font-weight: 600; margin:0;">Payment Received Summary</h2>
+    <button class="btn btn-export btn-sm" onclick="window.print()">Print / PDF</button>
+  </div>
+  <!-- Register-only view: dates, search and presets share one tight row so
+       the table gets the screen instead of a wall of filter boxes. -->
+  <div class="form-row no-print" style="align-items:flex-end; max-width:none;">
+    <div class="form-group" style="margin-bottom:0;"><label>From</label><input id="rep-pr-from" type="date" /></div>
+    <div class="form-group" style="margin-bottom:0;"><label>To</label><input id="rep-pr-to" type="date" /></div>
+    <div class="form-group" style="margin-bottom:0; flex:1.5; min-width:180px;"><label>Find customer / challan</label><input id="prsum-search" type="search" placeholder="Type to filter receipts…" oninput="renderPrsumView()" autocomplete="off" /></div>
+    <div class="form-group" style="margin-bottom:0; display:flex; gap:6px; flex-wrap:wrap; align-items:flex-end;">
+      <button class="btn btn-primary btn-sm" onclick="loadPaymentSummary()">Apply</button>
+      <button class="btn btn-secondary btn-sm" onclick="prsumPreset('month')">This Month</button>
+      <button class="btn btn-secondary btn-sm" onclick="prsumPreset('fy')">This FY</button>
+      <button class="btn btn-secondary btn-sm" id="prsum-reset" onclick="prsumReset()" title="Reset dates and search">Reset</button>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Register table keeps the teal header; the in-cell bar styles left with
+   the per-customer summary view. */
+#rep-prsum th { background: #0e7490; color: #fff; }
+[data-theme="dark"] #rep-prsum th { background: #155e75; }
+</style>
+
+<div class="card">
+  <div id="rep-prsum"></div>
+  <p id="rep-prsum-msg" style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"></p>
+</div>
+
+<script>
+(function(){
+  function escPr(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function prsumLocalISO(d) {
+    const p = n => String(n).padStart(2, "0");
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+
+  window.prsumPreset = function (which) {
+    const now = new Date();
+    let from;
+    if (which === "month") {
+      from = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else {
+      // Financial year: April to March.
+      from = new Date(now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1, 3, 1);
+    }
+    document.getElementById("rep-pr-from").value = prsumLocalISO(from);
+    document.getElementById("rep-pr-to").value = prsumLocalISO(now);
+    loadPaymentSummary();
+  };
+
+  let lastPrsum = null;
+
+  // Register is the only view now (the old per-customer summary view and
+  // its show/hide checkboxes are gone). The search input calls this by
+  // name, so it stays as a thin re-render entry point.
+  window.renderPrsumView = function () {
+    renderRegister();
+  };
+
+  /* Register: one row per receipt, newest first, challan links jump to the
+     receipt inside its challan detail. */
+  function renderRegister() {
+    const el = document.getElementById("rep-prsum");
+    const msg = document.getElementById("rep-prsum-msg");
+    if (!el || !lastPrsum) return;
+    const q = ((document.getElementById("prsum-search") || {}).value || "").trim().toLowerCase();
+    const visible = (lastPrsum.receipts || []).filter(r => {
+      if (!q) return true;
+      return [r.customer_name, r.challan_number, r.payment_mode,
+        r.transaction_ref, r.amount,
+        r.payment_date ? window.UI.fmtDay(r.payment_date) : ""]
+        .map(v => String(v == null ? "" : v).toLowerCase()).some(v => v.includes(q));
+    });
+    const rs = n => "₹ " + (parseFloat(n) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const rows = visible.map(r => ({
+      date: window.UI.dateWithTime(r.payment_date, r.created_at),
+      customer: escPr(r.customer_name || "—"),
+      challan: `<a href="#/challans?challan=${r.challan_id}&payment=${r.id}" title="Open challan at this receipt">${escPr(r.challan_number || ("#" + r.challan_id))}</a>`,
+      amount: rs(r.amount),
+      mode: escPr(r.payment_mode || "—"),
+      ref: escPr(r.transaction_ref || "—"),
+    }));
+    if (!rows.length) {
+      el.innerHTML = "<p>No receipts match. Adjust the search or press Reset.</p>";
+      if (msg) msg.textContent = "";
+      return;
+    }
+    const sumAmt = visible.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+    rows.push({
+      date: "",
+      customer: "<strong>Total</strong>",
+      challan: "<strong>" + visible.length + " receipt" + (visible.length === 1 ? "" : "s") + "</strong>",
+      amount: "<strong>" + window.UI.figBox(rs(sumAmt), sumAmt) + "</strong>",
+      mode: "",
+      ref: "",
+    });
+    if (window.UI.renderTable) {
+      window.UI.renderTable(el, rows, [
+        {key:"date",label:"Date"},
+        {key:"customer",label:"Customer"},
+        {key:"challan",label:"Challan"},
+        {key:"amount",label:"Amount"},
+        {key:"mode",label:"Mode"},
+        {key:"ref",label:"Ref"},
+      ]);
+    }
+    if (msg) {
+      msg.textContent = "Showing " + visible.length + " of " + (lastPrsum.receipts || []).length +
+        " receipts · " + (lastPrsum.from || "").slice(0, 10) + " to " + (lastPrsum.to || "").slice(0, 10);
+    }
+  }
+
+  window.prsumReset = function () {
+    const s = document.getElementById("prsum-search");
+    if (s) s.value = "";
+    // Reset blanks the dates (the server falls back to the FY range) and
+    // reloads, not just list filters.
+    document.getElementById("rep-pr-from").value = "";
+    document.getElementById("rep-pr-to").value = "";
+    loadPaymentSummary();
+  };
+
+  async function loadPaymentSummary() {
+    const el = document.getElementById("rep-prsum");
+    if (!el) return;
+    try {
+      const params = new URLSearchParams({
+        from_date: document.getElementById("rep-pr-from").value || "",
+        to_date: document.getElementById("rep-pr-to").value || "",
+      });
+      lastPrsum = await window.UI.api("/reports/payment-summary?" + params.toString());
+      renderPrsumView();
+    } catch (e) {
+      console.error("Payment summary", e);
+      el.innerHTML = "<p>Could not load the payment summary.</p>";
+    }
+  }
+  window.loadPaymentSummary = loadPaymentSummary;
+
+  prsumPreset("fy");
+  // Searchable dropdown on "Find customer / challan" (click empty box →
+  // everything the text search matches: customers, challan numbers, modes).
+  if (window.UI.searchSuggest) {
+    window.UI.searchSuggest(document.getElementById("prsum-search"), () => {
+      const out = new Set();
+      ((lastPrsum && lastPrsum.receipts) || []).forEach((r) => {
+        if (r.customer_name) out.add(String(r.customer_name));
+        if (r.challan_number) out.add(String(r.challan_number));
+        if (r.payment_mode) out.add(String(r.payment_mode).toLowerCase());
+      });
+      return Array.from(out);
+    });
+  }
+})();
+</script>

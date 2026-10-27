@@ -1,0 +1,796 @@
+<!-- Reports -->
+<div class="card no-print">
+  <h2 style="font-size: 18px; font-weight: 600; margin-bottom:12px;">📊 Reports</h2>
+  <p style="color:var(--color-text-muted); font-size:13px; margin:0 0 12px;">Save your current custom report configuration for quick access later.</p>
+</div>
+
+<div class="card" id="sysrep-card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:4px;">
+    <h2 style="font-size: 18px; font-weight: 600; margin:0;">System Reports</h2>
+  </div>
+  <p style="color:var(--color-text-muted); font-size:13px; margin:0 0 12px;">One-click reports with filters. Pick one, set the period and filter, then Run or export.</p>
+  <div id="sysrep-btns" class="no-print" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;"></div>
+  <div id="sysrep-filters" class="no-print">
+    <div class="form-row" style="align-items:flex-end;">
+      <div class="form-group" data-sysrep-dates><label>From</label><input id="sysrep-from" type="date" /></div>
+      <div class="form-group" data-sysrep-dates><label>To</label><input id="sysrep-to" type="date" /></div>
+      <div class="form-group" data-sysrep-dates><label>Quick</label>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button class="btn btn-secondary btn-sm" onclick="sysPreset('thismonth')">This month</button>
+          <button class="btn btn-secondary btn-sm" onclick="sysPreset('lastmonth')">Last month</button>
+          <button class="btn btn-secondary btn-sm" onclick="sysPreset('thisfy')">This FY</button>
+          <button class="btn btn-secondary btn-sm" onclick="sysPreset('lastfy')">Last FY</button>
+        </div>
+      </div>
+      <div class="form-group"><label id="sysrep-entity-label">Filter</label><select id="sysrep-entity" style="min-width:200px;"><option value="">All</option></select></div>
+      <div class="form-group" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" onclick="runSysReport()">Run</button>
+        <button class="btn btn-secondary btn-sm" onclick="resetSysReport()">Reset</button>
+        <button class="btn btn-export btn-sm" onclick="downloadSysReport('xlsx')">Export Excel</button>
+        <button class="btn btn-export btn-sm" onclick="downloadSysReport('pdf')">Export PDF</button>
+      </div>
+    </div>
+  </div>
+  <div id="sysrep-result" style="margin-top:14px;"></div>
+  <p id="sysrep-count" style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"></p>
+</div>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <h2 style="font-size: 18px; font-weight: 600; margin:0;">Custom Report</h2>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-export btn-sm" onclick="downloadCustomReport('xlsx')">Export Excel</button>
+      <button class="btn btn-export btn-sm" onclick="downloadCustomReport('pdf')">Export PDF</button>
+      <button class="btn btn-export btn-sm" onclick="window.print()">Print</button>
+    </div>
+  </div>
+  <div class="form-row no-print" style="align-items:flex-end;">
+    <div class="form-group"><label>Data</label>
+      <select id="cr-source" onchange="renderColumnPicker()">
+        <option value="sales">Sales (challan items)</option>
+        <option value="purchases">Purchases (purchase-invoice items)</option>
+        <option value="expenses">Expenses</option>
+        <option value="payments_in">Payments Received</option>
+        <option value="payments_out">Payments Made</option>
+      </select>
+    </div>
+    <div class="form-group"><label>From</label><input id="cr-from" type="date" /></div>
+    <div class="form-group"><label>To</label><input id="cr-to" type="date" /></div>
+    <div class="form-group"><label>Quick</label>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" onclick="crPreset('thismonth')">This month</button>
+        <button class="btn btn-secondary btn-sm" onclick="crPreset('lastmonth')">Last month</button>
+        <button class="btn btn-secondary btn-sm" onclick="crPreset('thisfy')">This FY</button>
+        <button class="btn btn-secondary btn-sm" onclick="crPreset('lastfy')">Last FY</button>
+      </div>
+    </div>
+    <div class="form-group"><button class="btn btn-primary btn-sm" onclick="runCustomReport()">Run</button></div>
+    <div class="form-group"><button class="btn btn-secondary btn-sm" onclick="resetCustomReportDates()">Reset Dates</button></div>
+  </div>
+  <div class="no-print" style="margin-top:10px;">
+    <label style="font-size:13px; font-weight:500; color:var(--color-text-muted);">Columns:</label>
+    <div id="cr-columns" style="display:flex; gap:14px; flex-wrap:wrap; font-size:13px; margin-top:6px;"></div>
+  </div>
+  <div id="cr-result" style="margin-top:14px;"></div>
+  <p id="cr-count" style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"></p>
+  
+  <!-- Save/Edit Report - integrated in Custom Report section -->
+  <div class="card no-print" style="margin-top:16px; padding:16px; background:var(--color-surface-alt); border-radius:8px;">
+    <h3 style="margin:0 0 12px; font-size:14px;">Save / Edit Custom Report</h3>
+    <div class="form-row" style="align-items:flex-end; max-width:640px;">
+      <div class="form-group"><label>Report Name</label><input id="save-rep-name" placeholder="e.g. March sales" /></div>
+      <div class="form-group" style="display:flex; gap:8px; align-items:flex-end;">
+        <button class="btn btn-primary btn-sm" id="save-rep-btn" onclick="saveCurrentReport()">Save Report</button>
+        <button class="btn btn-danger-outline btn-sm" id="save-rep-cancel" style="display:none;" onclick="cancelEditReport()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+    <h2 style="font-size: 18px; font-weight: 600;">Basic Reports</h2>
+    <button class="btn btn-export btn-sm" onclick="window.print()">Print</button>
+  </div>
+  <p style="color: var(--color-text-muted); font-size: 13px;">Live summary across sales, purchases, expenses, production and stock.</p>
+  <div class="form-row no-print" style="margin-top:12px; max-width:640px;">
+    <div class="form-group"><label>From</label><input id="rep-from" type="date" /></div>
+    <div class="form-group"><label>To</label><input id="rep-to" type="date" /></div>
+    <div class="form-group" style="align-self:flex-end; display:flex; gap:8px;">
+      <button class="btn btn-primary btn-sm" onclick="loadReports()">Apply</button>
+      <button class="btn btn-secondary btn-sm" onclick="clearReportFilter()">Clear</button>
+    </div>
+  </div>
+  <label class="no-print" style="display:flex; align-items:center; gap:8px; font-size:13px; margin-top:4px; cursor:pointer;">
+    <input type="checkbox" id="rep-fy-only" onchange="toggleFyFilter()" />
+    <span id="rep-fy-label">Current financial year only (hide older data)</span>
+  </label>
+  <p id="rep-range" style="font-size:12px; color:var(--color-text-muted);"></p>
+</div>
+
+<div class="stats-row" id="rep-stats">
+  <div class="stat-card"><h4>Sales Total</h4><div class="stat-value" id="rep-sales">—</div></div>
+  <div class="stat-card"><h4>Received</h4><div class="stat-value" id="rep-received">—</div></div>
+  <div class="stat-card"><h4>Outstanding</h4><div class="stat-value" id="rep-out">—</div></div>
+  <div class="stat-card"><h4>Expenses</h4><div class="stat-value" id="rep-exp">—</div></div>
+</div>
+
+<div class="card">
+  <h3>Sales by Status</h3>
+  <div id="rep-sales-status"></div>
+</div>
+
+<div class="card">
+  <h3>Purchases</h3>
+  <div id="rep-purch"></div>
+</div>
+
+<div class="card">
+  <h3>Expenses by Category</h3>
+  <div id="rep-exp-cat"></div>
+</div>
+
+<div class="card">
+  <h3>Production by Status</h3>
+  <div id="rep-prod"></div>
+</div>
+
+<div class="card">
+  <h3>Low Stock Alerts</h3>
+  <div id="rep-low"></div>
+</div>
+
+<div class="card">
+  <h3>Top Customer Dues</h3>
+  <div id="rep-dues"></div>
+</div>
+
+<!-- Category summary. Answers "which part of the business matters?" in one
+     place: revenue, what we make, what's sitting in stock, and where the
+     wastage is, all grouped the same way. -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:4px;">
+    <h3 style="margin:0;">Category Summary</h3>
+    <span style="font-size:12px; color:var(--color-text-muted);">
+      Revenue, production, stock value and wastage per category
+    </span>
+  </div>
+  <p style="font-size:12px; color:var(--color-text-muted); margin:0 0 12px;">
+    Sales count only live, non-draft challans. Stock value is the finished-goods
+    balance from the stock ledger at each pack size's own rate. Wastage is the
+    material lost at each production stage, as a share of the total put into
+    production — not as a share of final output, which would overstate it.
+    Finished-goods write-offs show as a stock reduction, not here.
+  </p>
+  <div id="rep-cat"></div>
+  <p id="rep-cat-msg" style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"></p>
+</div>
+
+<style>
+/* Print shows report results, not the app: window.print() prints the whole
+   DOM, so hide the shell (sidebar, top header with the Editor Mode toggle),
+   toasts, every button, and all builder/filter controls (.no-print). */
+@media print {
+  .sidebar, .top-header, #toast-container, .btn, .no-print { display: none !important; }
+  .main-wrapper { margin-left: 0; }
+  .main-content { max-width: none; padding: 0; }
+  .card { box-shadow: none; }
+}
+</style>
+
+<script>
+(function(){
+  let crFields = null;
+
+  function escCr(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function crLabel(col) {
+    return col.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  window.renderColumnPicker = async function renderColumnPicker() {
+    try {
+      if (!crFields) crFields = await window.UI.api("/reports/custom/fields");
+      const src = document.getElementById("cr-source").value;
+      const cols = crFields[src] || [];
+      document.getElementById("cr-columns").innerHTML = cols.map(c =>
+        `<label style="display:flex; align-items:center; gap:6px; cursor:pointer;">` +
+        `<input type="checkbox" data-col="${c}" checked /> ${crLabel(c)}</label>`
+      ).join("");
+    } catch (e) {
+      console.error("Fields", e);
+    }
+  }
+  window.renderColumnPicker = renderColumnPicker;
+
+  window.resetCustomReportDates = function () {
+    document.getElementById("cr-from").value = "";
+    document.getElementById("cr-to").value = "";
+    // Blank dates make the server fall back to the FY window, which is what
+    // "reset" should restore.
+    runCustomReport();
+  };
+
+  window.resetSysReport = function () {
+    document.getElementById("sysrep-from").value = "";
+    document.getElementById("sysrep-to").value = "";
+    document.getElementById("sysrep-entity").value = "";
+    runSysReport();
+  };
+
+  // Quick date presets: local calendar math (IST-native server values are
+  // only compared, never reformatted here). FY runs Apr–Mar like everywhere.
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  function presetRange(kind) {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    if (kind === "thismonth") return { from: new Date(y, m, 1), to: new Date(y, m + 1, 0) };
+    if (kind === "lastmonth") return { from: new Date(y, m - 1, 1), to: new Date(y, m, 0) };
+    if (kind === "thisfy") return { from: new Date(m >= 3 ? y : y - 1, 3, 1), to: new Date(m >= 3 ? y + 1 : y, 2, 31) };
+    if (kind === "lastfy") {
+      const fy = m >= 3 ? y : y - 1;
+      return { from: new Date(fy - 1, 3, 1), to: new Date(fy, 2, 31) };
+    }
+    return null;
+  }
+  window.applyDatePreset = function (fromId, toId, kind) {
+    const r = presetRange(kind);
+    if (!r) return;
+    document.getElementById(fromId).value = iso(r.from);
+    document.getElementById(toId).value = iso(r.to);
+  };
+  window.crPreset = function (kind) {
+    applyDatePreset("cr-from", "cr-to", kind);
+    runCustomReport();
+  };
+  window.sysPreset = function (kind) {
+    applyDatePreset("sysrep-from", "sysrep-to", kind);
+    runSysReport();
+  };
+
+  // ISO datetimes ("2026-09-10T10:00:00") collapse to their year under the
+  // shared digit-strip sorter, tying every row. Sort report dates by real
+  // timestamps instead; dateless rows sort as blank (last in ascending).
+  function reportDateKey(r) {
+    if (!r || !r.date) return null;
+    const t = new Date(r.date).getTime();
+    return isNaN(t) ? null : t;
+  }
+
+  // (Purchase invoice numbers use the shared UI.docNumKey FY key, wired
+  // at the renderTable call sites below.)
+
+  function pickedColumns() {
+    const out = [];
+    document.querySelectorAll("#cr-columns input[data-col]").forEach(cb => {
+      if (cb.checked) out.push(cb.dataset.col);
+    });
+    return out;
+  }
+
+  window.runCustomReport = async function () {
+    const box = document.getElementById("cr-result");
+    const count = document.getElementById("cr-count");
+    const cols = pickedColumns();
+    if (!cols.length) {
+      count.textContent = "Select at least one column.";
+      return;
+    }
+    const params = new URLSearchParams({
+      source: document.getElementById("cr-source").value,
+      from_date: document.getElementById("cr-from").value,
+      to_date: document.getElementById("cr-to").value,
+      columns: cols.join(","),
+    });
+    box.innerHTML = "<p style='color:var(--color-text-muted);'>Loading…</p>";
+    try {
+      const d = await window.UI.api("/reports/custom?" + params.toString());
+      if (!d.rows.length) {
+        box.innerHTML = "<p style='color:var(--color-text-muted);'>No rows for this selection.</p>";
+        count.textContent = "";
+        return;
+      }
+      const colDefs = d.columns.map(c => {
+        if (c === "date" || c === "payment_date" || c === "invoice_date" || c === "challan_date" || c === "date") {
+          return { key: c, label: crLabel(c), render: v => window.UI.fmtDateTime(v) };
+        }
+        return { key: c, label: crLabel(c) };
+      });
+      window.UI.renderTable(box, d.rows, colDefs, { sortValue: { date: reportDateKey, invoice: r => window.UI.docNumKey(r.invoice) } });
+      count.textContent = `${d.count} rows` +
+        (d.columns.includes("amount") ? ` · Total: ₹ ${(Math.round(d.amount_total * 100) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "");
+    } catch (e) {
+      box.innerHTML = `<p style="color:var(--color-danger);">Failed: ${escCr(e.message || e)}</p>`;
+      count.textContent = "";
+    }
+  };
+
+  // `fmt` is 'xlsx' or 'pdf'. Both are built server-side from the same filtered
+  // report, so a PDF never shows different figures from the spreadsheet.
+  window.downloadCustomReport = async function (fmt) {
+    fmt = fmt || "xlsx";
+    const cols = pickedColumns();
+    if (!cols.length) {
+      document.getElementById("cr-count").textContent = "Select at least one column.";
+      return;
+    }
+    const params = new URLSearchParams({
+      source: document.getElementById("cr-source").value,
+      from_date: document.getElementById("cr-from").value,
+      to_date: document.getElementById("cr-to").value,
+      columns: cols.join(","),
+      format: fmt,
+    });
+    try {
+      const src = document.getElementById("cr-source").value;
+      const ext = fmt === "pdf" ? "pdf" : "xlsx";
+      await window.UI.download("/reports/custom/export?" + params.toString(),
+        `custom_${src}_report.${ext}`);
+    } catch (e) {
+      window.UI.notify(e.message || "Export failed", "error");
+    }
+  };
+
+  /* System Reports: one-click presets over the custom-report engine.
+     Each preset fixes the source + columns; the user only picks a period
+     and one entity filter. Exports reuse the same filtered endpoint. */
+  const SYS_REPORTS = {
+    sales_product: { title: "Sales by Product", source: "sales",
+      columns: ["date", "challan", "customer", "product", "packaging", "quantity", "weight_kg", "amount"],
+      entity: { field: "product", label: "Product", list: "products" } },
+    customer_dues: { title: "Customer Dues", source: "dues",
+      columns: ["customer", "company", "contact", "outstanding"],
+      entity: { field: "customer", label: "Customer", list: "customers" },
+      hideDates: true },
+    supplier_purchases: { title: "Supplier Purchases", source: "purchases",
+      columns: ["date", "invoice", "supplier", "material", "quantity", "amount", "paid", "outstanding"],
+      entity: { field: "supplier", label: "Supplier", list: "suppliers" } },
+    expenses_category: { title: "Expenses by Category", source: "expenses",
+      columns: ["date", "category", "description", "amount", "payee"],
+      entity: { field: "category", label: "Category", list: "expense-categories" } },
+    production_output: { title: "Production Output", source: "production",
+      columns: ["date", "number", "product", "packaging", "target_kg", "actual_kg", "status"],
+      entity: { field: "product", label: "Product", list: "products" } },
+  };
+  let sysReportKey = null;
+  const sysLists = {};
+
+  async function sysEntityNames(list) {
+    if (sysLists[list]) return sysLists[list];
+    try {
+      const data = await window.UI.api("/" + list) || [];
+      const names = [...new Set((data || []).map(r => r.name).filter(Boolean))].sort();
+      sysLists[list] = names;
+      return names;
+    } catch (e) {
+      console.error("System report list", e);
+      return [];
+    }
+  }
+
+  window.selectSysReport = async function (key) {
+    const preset = SYS_REPORTS[key];
+    if (!preset) return;
+    sysReportKey = key;
+    document.querySelectorAll("#sysrep-btns button").forEach(b => {
+      const on = b.dataset.sysrep === key;
+      b.classList.toggle("btn-primary", on);
+      b.classList.toggle("btn-secondary", !on);
+    });
+    document.getElementById("sysrep-filters").style.display = "";
+    document.querySelectorAll("[data-sysrep-dates]").forEach(el => {
+      el.style.display = preset.hideDates ? "none" : "";
+    });
+    document.getElementById("sysrep-entity-label").textContent = preset.entity.label;
+    const sel = document.getElementById("sysrep-entity");
+    sel.innerHTML = `<option value="">All ${preset.entity.label}s</option>`;
+    (await sysEntityNames(preset.entity.list)).forEach(n => {
+      const o = document.createElement("option");
+      o.value = n;
+      o.textContent = n;
+      sel.appendChild(o);
+    });
+    document.getElementById("sysrep-result").innerHTML = "";
+    document.getElementById("sysrep-count").textContent = "";
+  };
+
+  function sysReportParams() {
+    const preset = SYS_REPORTS[sysReportKey];
+    const p = new URLSearchParams({
+      source: preset.source,
+      from_date: preset.hideDates ? "" : document.getElementById("sysrep-from").value,
+      to_date: preset.hideDates ? "" : document.getElementById("sysrep-to").value,
+      columns: preset.columns.join(","),
+      entity_field: preset.entity.field,
+      entity_value: document.getElementById("sysrep-entity").value,
+    });
+    return { preset, params: p };
+  }
+
+  window.runSysReport = async function () {
+    if (!sysReportKey || !SYS_REPORTS[sysReportKey]) {
+      document.getElementById("sysrep-count").textContent = "Pick a report above first.";
+      return;
+    }
+    const box = document.getElementById("sysrep-result");
+    const count = document.getElementById("sysrep-count");
+    const { preset, params } = sysReportParams();
+    box.innerHTML = "<p style='color:var(--color-text-muted);'>Loading…</p>";
+    try {
+      const d = await window.UI.api("/reports/custom?" + params.toString());
+      if (!d.rows.length) {
+        box.innerHTML = "<p style='color:var(--color-text-muted);'>No rows for this selection.</p>";
+        count.textContent = "";
+        return;
+      }
+      const colDefs = d.columns.map(c => {
+        if (c === "date" || c === "payment_date" || c === "invoice_date" || c === "challan_date" || c === "date") {
+          return { key: c, label: crLabel(c), render: v => window.UI.fmtDateTime(v) };
+        }
+        return { key: c, label: crLabel(c) };
+      });
+      window.UI.renderTable(box, d.rows, colDefs, { sortValue: { date: reportDateKey, invoice: r => window.UI.docNumKey(r.invoice) } });
+      const bits = [`${d.count} rows`];
+      if (d.columns.includes("amount") && d.amount_total) {
+        bits.push(`Total: ₹ ${(Math.round(d.amount_total * 100) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`);
+      }
+      if (d.columns.includes("outstanding")) {
+        const t = (d.rows || []).reduce((s, r) => s + (parseFloat(r.outstanding) || 0), 0);
+        bits.push(`Outstanding: ₹ ${(Math.round(t * 100) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`);
+      }
+      const filt = document.getElementById("sysrep-entity").value;
+      count.textContent = preset.title + (filt ? ` · ${preset.entity.label}: ${filt}` : "") + " · " + bits.join(" · ");
+    } catch (e) {
+      box.innerHTML = `<p style="color:var(--color-danger);">Failed: ${escCr(e.message || e)}</p>`;
+      count.textContent = "";
+    }
+  };
+
+  window.downloadSysReport = async function (fmt) {
+    if (!sysReportKey || !SYS_REPORTS[sysReportKey]) {
+      document.getElementById("sysrep-count").textContent = "Pick a report above first.";
+      return;
+    }
+    fmt = fmt || "xlsx";
+    const { preset, params } = sysReportParams();
+    params.set("format", fmt);
+    try {
+      await window.UI.download("/reports/custom/export?" + params.toString(),
+        `system_${sysReportKey}_report.${fmt === "pdf" ? "pdf" : "xlsx"}`);
+    } catch (e) {
+      window.UI.notify(e.message || "Export failed", "error");
+    }
+  };
+
+  function renderSysReportButtons() {
+    document.getElementById("sysrep-btns").innerHTML = Object.keys(SYS_REPORTS).map(k =>
+      `<button class="btn btn-sm btn-secondary" data-sysrep="${k}" onclick="selectSysReport('${k}')">${SYS_REPORTS[k].title}</button>`
+    ).join("");
+  }
+
+  function escRep(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  let editingReportId = null;
+
+  async function loadSavedReports() {
+    // No visible list (library lives in the sidebar submenu) — just stash for running.
+    try {
+      const list = await window.UI.api("/reports/saved");
+      window._savedReports = {};
+      (list || []).forEach(r => { window._savedReports[r.id] = r; });
+    } catch (e) {
+      console.error("Saved reports", e);
+    }
+  }
+
+  window.runSavedReport = function (id) {
+    const r = (window._savedReports || {})[id];
+    if (!r) return;
+    if (r.kind === "link" && r.target) {
+      window.location.hash = r.target;
+      return;
+    }
+    document.getElementById("cr-source").value = r.source;
+    window.renderColumnPicker().then(() => {
+      (r.columns || []).forEach(c => {
+        const cb = document.querySelector(`#cr-columns input[data-col="${c}"]`);
+        if (cb) cb.checked = true;
+      });
+      document.querySelectorAll("#cr-columns input[data-col]").forEach(cb => {
+        if (!(r.columns || []).includes(cb.dataset.col)) cb.checked = false;
+      });
+      document.getElementById("cr-from").value = r.from_date || "";
+      document.getElementById("cr-to").value = r.to_date || "";
+      window.runCustomReport();
+      document.getElementById("cr-result").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  };
+
+  window.editSavedReport = function (id) {
+    const r = (window._savedReports || {})[id];
+    if (!r || r.kind === "link") return;
+    editingReportId = id;
+    document.getElementById("save-rep-name").value = r.name || "";
+    document.getElementById("save-rep-btn").textContent = "Update Report";
+    document.getElementById("save-rep-cancel").style.display = "";
+    document.getElementById("cr-source").value = r.source;
+    window.renderColumnPicker().then(() => {
+      document.querySelectorAll("#cr-columns input[data-col]").forEach(cb => {
+        cb.checked = (r.columns || []).includes(cb.dataset.col);
+      });
+      document.getElementById("cr-from").value = r.from_date || "";
+      document.getElementById("cr-to").value = r.to_date || "";
+      window.runCustomReport();
+    });
+  };
+
+  window.cancelEditReport = function () {
+    editingReportId = null;
+    document.getElementById("save-rep-name").value = "";
+    document.getElementById("save-rep-btn").textContent = "Save Report";
+    document.getElementById("save-rep-cancel").style.display = "none";
+  };
+
+  window.saveCurrentReport = async function () {
+    const name = document.getElementById("save-rep-name").value.trim();
+    if (!name) { window.UI.notify("Enter a report name", "warning"); return; }
+    const body = {
+      name: name,
+      source: document.getElementById("cr-source").value,
+      columns: pickedColumns(),
+      from_date: document.getElementById("cr-from").value || null,
+      to_date: document.getElementById("cr-to").value || null,
+    };
+    try {
+      let res;
+      if (editingReportId == null) {
+        res = await fetch("/reports/saved", { method: "POST",
+          headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) });
+      } else {
+        res = await fetch("/reports/saved/" + editingReportId, { method: "PUT",
+          headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) });
+      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
+      const wasEdit = editingReportId != null;
+      window.cancelEditReport();
+      window.UI.notify(wasEdit ? "Report updated" : "Report saved", "success");
+      loadSavedReports();
+      if (window.App && window.App.refreshReportNav) window.App.refreshReportNav();
+    } catch (e) {
+      window.UI.notify(e.message || "Failed", "error");
+    }
+  };
+
+  window.deleteSavedReport = async function (id) {
+    if (!confirm("Delete this saved report?")) return;
+    try {
+      const res = await fetch("/reports/saved/" + id, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed");
+      loadSavedReports();
+      if (window.App && window.App.refreshReportNav) window.App.refreshReportNav();
+    } catch (e) {
+      window.UI.notify(e.message || "Failed", "error");
+    }
+  };
+
+  function kv(el, rows, cols) {
+    const c = document.getElementById(el);
+    if (c && window.UI.renderTable) window.UI.renderTable(c, rows, cols);
+    else if (c) c.innerHTML = "<p>No data.</p>";
+  }
+
+  window.clearReportFilter = function () {
+    document.getElementById("rep-from").value = "";
+    document.getElementById("rep-to").value = "";
+    document.getElementById("rep-fy-only").checked = false;
+    saveReportFilters();
+    loadReports();
+  };
+
+  function fyStart() {
+    // Financial year: April to March
+    const now = new Date();
+    const year = now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+    return year + "-04-01";
+  }
+
+  function fyLabel() {
+    const now = new Date();
+    const startYear = now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+    return "Current financial year only (" + startYear + "–" + String(startYear + 1).slice(2) + ", hide older data)";
+  }
+
+  // See challans.html: the FY checkbox is only ever changed by the user, and
+  // the choice persists across navigation instead of resetting itself.
+  const REP_FILTER_KEY = "reports-filters";
+
+  function saveReportFilters() {
+    window.UI.saveFilterState(REP_FILTER_KEY, {
+      fyOnly: document.getElementById("rep-fy-only").checked,
+      from: document.getElementById("rep-from").value,
+      to: document.getElementById("rep-to").value,
+    });
+  }
+
+  function restoreReportFilters() {
+    const s = window.UI.loadFilterState(REP_FILTER_KEY);
+    if (!s) return;
+    const box = document.getElementById("rep-fy-only");
+    if (box && typeof s.fyOnly === "boolean") box.checked = s.fyOnly;
+    if (typeof s.from === "string") document.getElementById("rep-from").value = s.from;
+    if (typeof s.to === "string") document.getElementById("rep-to").value = s.to;
+  }
+
+  window.toggleFyFilter = function () {
+    const checked = document.getElementById("rep-fy-only").checked;
+    if (checked) {
+      document.getElementById("rep-from").value = fyStart();
+    } else {
+      document.getElementById("rep-from").value = "";
+    }
+    saveReportFilters();
+    loadReports();
+  };
+
+  // Manual date edits are remembered but no longer switch the FY toggle off.
+  ["rep-from", "rep-to"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("change", () => saveReportFilters());
+  });
+  document.getElementById("rep-fy-label").textContent = fyLabel();
+
+  window.loadReports = async function loadReports() {
+    try {
+      const from = document.getElementById("rep-from").value;
+      const to = document.getElementById("rep-to").value;
+      let url = "/reports/summary";
+      const params = [];
+      if (from) params.push("from_date=" + encodeURIComponent(from));
+      if (to) params.push("to_date=" + encodeURIComponent(to));
+      if (params.length) url += "?" + params.join("&");
+      const d = await window.UI.api(url);
+      const range = document.getElementById("rep-range");
+      if (range) range.textContent = (from || to) ? ("Filtered: " + (from || "…") + " to " + (to || "…")) : "Showing all data";
+      const fmt = n => "₹ " + (parseFloat(n) || 0).toFixed(2);
+      document.getElementById("rep-sales").textContent = fmt(d.sales.total);
+      document.getElementById("rep-received").textContent = fmt(d.sales.received);
+      document.getElementById("rep-out").textContent = fmt(d.sales.outstanding);
+      document.getElementById("rep-exp").textContent = fmt(d.expenses.total);
+
+      kv("rep-sales-status",
+        (d.sales.by_status || []).map(r => ({ status: r.status, count: r.count })),
+        [{key:"status",label:"Status"},{key:"count",label:"Challans"}]);
+
+      kv("rep-purch", [{
+        total: fmt(d.purchases.total), paid: fmt(d.purchases.paid),
+        outstanding: fmt(d.purchases.outstanding), count: d.purchases.count,
+      }], [{key:"total",label:"Total"},{key:"paid",label:"Paid"},{key:"outstanding",label:"Outstanding"},{key:"count",label:"Invoices"}]);
+
+      kv("rep-exp-cat",
+        (d.expenses.by_category || []).map(r => ({ category: r.category, total: fmt(r.total) })),
+        [{key:"category",label:"Category"},{key:"total",label:"Total"}]);
+
+      kv("rep-prod",
+        (d.production.by_status || []).map(r => ({ status: r.status, count: r.count })),
+        [{key:"status",label:"Status"},{key:"count",label:"Entries"}]);
+
+      kv("rep-low",
+        (d.low_stock || []).map(r => ({ name: r.name, stock: r.stock + " " + (r.unit || ""), threshold: r.threshold })),
+        [{key:"name",label:"Material"},{key:"stock",label:"Stock"},{key:"threshold",label:"Threshold"}]);
+
+      kv("rep-dues",
+        (d.top_dues || []).map(r => ({ customer: r.customer, outstanding: fmt(r.outstanding) })),
+        [{key:"customer",label:"Customer"},{key:"outstanding",label:"Outstanding"}]);
+    } catch (e) {
+      console.error("Reports", e);
+    }
+    loadCategorySummary();
+  }
+
+  /* Category summary lives on its own endpoint because it joins sales,
+     production, finished stock and wastage - far more than /reports/summary
+     does. Kept separate so a slow category report never delays the tiles. */
+  async function loadCategorySummary() {
+    const el = document.getElementById("rep-cat");
+    const msg = document.getElementById("rep-cat-msg");
+    if (!el) return;
+    try {
+      const d = await window.UI.api("/reports/by-category");
+      const fmt = n => "₹ " + (parseFloat(n) || 0).toFixed(2);
+      const kg = n => (parseFloat(n) || 0).toFixed(2) + " kg";
+      const rows = (d.rows || []).map(r => ({
+        category: r.category + (r.parent ? ` <span style="color:var(--color-text-muted);">(${escRep(r.parent)})</span>` : ""),
+        products: r.products,
+        revenue: fmt(r.revenue),
+        share: (parseFloat(r.revenue_share) || 0).toFixed(1) + "%",
+        qty: kg(r.qty_sold_kg),
+        produced: kg(r.produced_kg),
+        processed: kg(r.stage_input_kg),
+        stock: kg(r.stock_kg),
+        stockval: fmt(r.stock_value),
+        // Percentage is against total stage input, so gate on that - showing a
+        // rate against a denominator of zero would be meaningless.
+        wastage: kg(r.wastage_kg) + (r.stage_input_kg
+          ? ` <span style="color:var(--color-text-muted);">(${(parseFloat(r.wastage_pct)||0).toFixed(1)}%)</span>`
+          : ""),
+        // Packing gain is wrapper weight, not negative loss: its own
+        // column, never netted against wastage.
+        gain: (parseFloat(r.packing_gain_kg) || 0) > 0 ? ("+" + kg(r.packing_gain_kg)) : kg(0),
+      }));
+      const t = d.totals || {};
+      if (!rows.length) {
+        el.innerHTML = "<p>No categories yet. Add one on the Products page.</p>";
+        if (msg) msg.textContent = "";
+        return;
+      }
+      rows.push({
+        category: "<strong>Total</strong>",
+        products: t.products, revenue: "<strong>" + fmt(t.revenue) + "</strong>",
+        share: "", qty: kg(t.qty_sold_kg), produced: kg(t.produced_kg),
+        processed: kg(t.stage_input_kg),
+        stock: kg(t.stock_kg), stockval: fmt(t.stock_value), wastage: kg(t.wastage_kg),
+        gain: "+" + kg(t.packing_gain_kg || 0),
+      });
+      if (window.UI.renderTable) {
+        window.UI.renderTable(el, rows, [
+          {key:"category",label:"Category"},
+          {key:"products",label:"Products"},
+          {key:"revenue",label:"Revenue"},
+          {key:"share",label:"Share"},
+          {key:"qty",label:"Sold (kg)"},
+          {key:"processed",label:"Processed (kg)"},
+          {key:"produced",label:"Output (kg)"},
+          {key:"stock",label:"In stock (kg)"},
+          {key:"stockval",label:"Stock value"},
+          {key:"wastage",label:"Stage loss"},
+          {key:"gain",label:"Packing gain"},
+        ]);
+      }
+      if (msg) {
+        msg.textContent = t.categories + " categor" + (t.categories === 1 ? "y" : "ies") +
+          " · " + t.products + " products";
+      }
+    } catch (e) {
+      console.error("Category summary", e);
+      el.innerHTML = "<p>Could not load the category summary.</p>";
+    }
+  }
+  window.loadCategorySummary = loadCategorySummary;
+
+  restoreReportFilters();
+  loadReports();
+  window.renderColumnPicker();
+  renderSysReportButtons();
+  // Launched from the sidebar submenu (run / edit / delete / new).
+  // Wait for the stash so actions never race the fetch.
+  loadSavedReports().then(() => {
+    try {
+      const runId = sessionStorage.getItem("run-report");
+      if (runId) {
+        sessionStorage.removeItem("run-report");
+        if (runId === "new") {
+          const el = document.getElementById("cr-source");
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+        } else {
+          window.runSavedReport(parseInt(runId, 10));
+        }
+      }
+      const editId = sessionStorage.getItem("edit-report");
+      if (editId) {
+        sessionStorage.removeItem("edit-report");
+        window.editSavedReport(parseInt(editId, 10));
+      }
+      const delId = sessionStorage.getItem("del-report");
+      if (delId) {
+        sessionStorage.removeItem("del-report");
+        window.deleteSavedReport(parseInt(delId, 10));
+      }
+    } catch (e) { console.error("run-report", e); }
+  });
+})();
+</script>

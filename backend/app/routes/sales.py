@@ -95,12 +95,67 @@ def list_challans(request: Request = None, db: Session = Depends(get_db)):
     return query.all()
 
 
-@router.get("/challans/{challan_id}", response_model=SalesChallanSchema)
+@router.get("/challans/{challan_id}")
 def get_challan(challan_id: int, db: Session = Depends(get_db)):
-    c = db.query(SalesChallan).filter(SalesChallan.id == challan_id).first()
-    if not c:
+    row = (
+        db.query(SalesChallan, Customer)
+        .join(Customer, SalesChallan.customer_id == Customer.id)
+        .filter(SalesChallan.id == challan_id)
+        .first()
+    )
+    if not row:
         raise HTTPException(status_code=404, detail="Challan not found")
-    return c
+    c, cust = row
+    return {
+        "id": c.id,
+        "challan_number": c.challan_number,
+        "challan_date": c.challan_date.isoformat() if c.challan_date else None,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "customer_id": c.customer_id,
+        "customer_name": cust.name,
+        "status": c.status.value if c.status else "",
+        "total_weight": float(c.total_weight or 0),
+        "total_price": float(c.total_price or 0),
+        "paid_amount": float(c.paid_amount or 0),
+        "outstanding_amount": float(c.outstanding_amount or 0),
+        "notes": c.notes,
+        "dispatched_at": c.dispatched_at.isoformat() if c.dispatched_at else None,
+        "delivered_at": c.delivered_at.isoformat() if c.delivered_at else None,
+        "transporter": c.transporter or "",
+        "vehicle_no": c.vehicle_no or "",
+        "company_name": c.company_name or "",
+        "company_address": c.company_address or "",
+        "company_gstin": c.company_gstin or "",
+        "company_phone": c.company_phone or "",
+        "company_email": c.company_email or "",
+        "company_terms": c.company_terms or "",
+        "cust_company_name": c.cust_company_name or "",
+        "cust_address": c.cust_address or "",
+        "cust_gst_no": c.cust_gst_no or "",
+        "cust_contact_number": c.cust_contact_number or "",
+        "company_snapshot_at": c.company_snapshot_at.isoformat() if c.company_snapshot_at else None,
+        "footer_id": c.footer_id,
+        "is_archived": c.is_archived,
+        "archived_at": c.archived_at.isoformat() if c.archived_at else None,
+        "archived_by": c.archived_by,
+        "items": [
+            {
+                "id": it.id,
+                "challan_id": it.challan_id,
+                "product_id": it.product_id,
+                "packaging_size_id": it.packaging_size_id,
+                "quantity": float(it.quantity or 0),
+                "weight": float(it.weight or 0),
+                "rate_per_kg": float(it.rate_per_kg or 0),
+                "amount": float(it.amount or 0),
+                "product_name": it.product_name or "",
+                "size_name": it.size_name or "",
+                "hsn_code": it.hsn_code or "",
+                "sequence": it.sequence,
+            }
+            for it in (c.items or [])
+        ],
+    }
 
 
 def _challan_payload(payload) -> dict:

@@ -45,7 +45,7 @@ def get_production_entry(entry_id: int, db: Session = Depends(get_db)):
     e = db.query(ProductionEntry).filter(ProductionEntry.id == entry_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="Production entry not found")
-    return e
+    return _entry_dict(e, db)
 
 
 def _dec(value):
@@ -60,12 +60,43 @@ def _dec(value):
         return Decimal("0")
 
 
-def _entry_dict(e):
+def _entry_dict(e, db):
     """Serialise an entry to a dict (tests and routes both consume it).
 
-    stage_entries/outputs stay as ORM rows so callers can read typed
-    columns (Decimal quantities) off them directly.
+    stage_entries/outputs are serialised to plain dicts so callers can read
+    them with dict-style access.
     """
+    outputs = []
+    for o in (e.outputs or []):
+        o_ps = None
+        if o.packaging_size_id:
+            o_ps = db.query(PackagingSize).filter(PackagingSize.id == o.packaging_size_id).first()
+        packets = float(o.packets or 0)
+        qty_kg = float(o.quantity_kg or 0)
+        if qty_kg == 0 and o_ps:
+            qty_kg = packets * float(o_ps.weight_in_kg or 0)
+        outputs.append({
+            "id": o.id,
+            "production_entry_id": o.production_entry_id,
+            "packaging_size_id": o.packaging_size_id,
+            "packets": packets,
+            "quantity_kg": qty_kg,
+            "packaging_size_name": o_ps.size_name if o_ps else None,
+            "pack_weight_kg": float(o_ps.weight_in_kg) if o_ps and o_ps.weight_in_kg else None,
+        })
+    actual_packets = sum(o["packets"] for o in outputs)
+
+    stages = []
+    for s in (e.stage_entries or []):
+        stages.append({
+            "id": s.id,
+            "production_entry_id": s.production_entry_id,
+            "stage": s.stage.value if s.stage else None,
+            "sequence": s.sequence,
+            "instruction": s.notes or "",
+            "packing_gain_kg": float(s.packing_gain_kg or 0),
+        })
+
     return {
         "id": e.id,
         "production_number": e.production_number,
@@ -82,8 +113,14 @@ def _entry_dict(e):
         "is_archived": e.is_archived,
         "completed_at": getattr(e, "completed_at", None),
         "product_name": e.product.name if e.product else None,
-        "stage_entries": e.stage_entries or [],
-        "outputs": e.outputs or [],
+        "packaging_size_name": None,
+        "pack_weight_kg": None,
+        "actual_packets": actual_packets,
+        "stage_entries": stages,
+        "outputs": outputs,
+        "wastages": [],
+        "archived_at": e.archived_at,
+        "archived_by": e.archived_by,
     }
 
 
@@ -224,7 +261,7 @@ def create_production_entry(entry: dict, request: Request, db: Session = Depends
     _audit(db, request, "production", "create", record=e, record_type="production_entry", new_values={"production_number": production_number, "product_id": entry.get("product_id")})
     db.commit()
     db.refresh(e)
-    return _entry_dict(e)
+    return _entry_dict(e, db)
 
 
 @router.post("/production/entries/{entry_id}/pack", response_model=ProductionEntrySchema)
@@ -315,7 +352,7 @@ def pack_production_entry(entry_id: int, payload: dict, request: Request, db: Se
     _audit(db, request, "production", "pack", record=e, record_type="production_entry", new_values={"output_count": len(outputs)})
     db.commit()
     db.refresh(e)
-    return _entry_dict(e)
+    return _entry_dict(e, db)
 
 
 @router.put("/production/entries/{entry_id}/status", response_model=ProductionEntrySchema)
@@ -358,7 +395,7 @@ def set_production_status(entry_id: int, payload: dict, db: Session, request: Re
            new_values={"status": new_status.value})
     db.commit()
     db.refresh(e)
-    return _entry_dict(e)
+    return _entry_dict(e, db)
 
 
 @router.put("/production/entries/{entry_id}/stages", response_model=ProductionEntrySchema)
@@ -384,7 +421,7 @@ def update_production_stages(entry_id: int, payload: dict, request: Request, db:
     _audit(db, request, "production", "stages_update", record=e, record_type="production_entry", new_values={"stage_count": len(stages)}, notes=reason)
     db.commit()
     db.refresh(e)
-    return _entry_dict(e)
+    return _entry_dict(e, db)
 
 
 @router.get("/production/entries/{entry_id}/materials")

@@ -57,17 +57,70 @@ def list_purchase_invoices(db: Session = Depends(get_db)):
     ]
 
 
-@router.get("/purchase-invoices/{invoice_id}", response_model=PurchaseInvoiceSchema)
+@router.get("/purchase-invoices/{invoice_id}")
 def get_purchase_invoice(invoice_id: int, db: Session = Depends(get_db)):
-    inv = db.query(PurchaseInvoice).filter(PurchaseInvoice.id == invoice_id).first()
-    if not inv:
+    row = (
+        db.query(PurchaseInvoice, Supplier)
+        .join(Supplier, PurchaseInvoice.supplier_id == Supplier.id)
+        .filter(PurchaseInvoice.id == invoice_id)
+        .first()
+    )
+    if not row:
         raise HTTPException(status_code=404, detail="Purchase invoice not found")
-    return inv
+    inv, sup = row
+    return {
+        "id": inv.id,
+        "invoice_number": inv.invoice_number,
+        "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+        "created_at": inv.created_at.isoformat() if inv.created_at else None,
+        "supplier_id": inv.supplier_id,
+        "supplier_name": sup.name,
+        "supplier_company": sup.company_name or "",
+        "gst_percent": float(inv.gst_percent or 0),
+        "other_charges": float(inv.other_charges or 0),
+        "transport_charges": float(inv.transport_charges or 0),
+        "discount": float(inv.discount or 0),
+        "total_amount": float(inv.total_amount or 0),
+        "paid_amount": float(inv.paid_amount or 0),
+        "outstanding_amount": float(inv.outstanding_amount or 0),
+        "notes": inv.notes,
+        "status": inv.payment_status.value if inv.payment_status else "",
+        "is_archived": inv.is_archived,
+        "archived_at": inv.archived_at.isoformat() if inv.archived_at else None,
+        "archived_by": inv.archived_by,
+        "items": [
+            {
+                "id": it.id,
+                "sales_invoice_id": it.sales_invoice_id,
+                "product_id": it.product_id,
+                "packaging_size_id": it.packaging_size_id,
+                "quantity": float(it.quantity or 0),
+                "weight": float(it.weight or 0),
+                "rate_per_kg": float(it.rate_per_kg or 0),
+                "amount": float(it.amount or 0),
+                "taxable_value": float(it.taxable_value or 0),
+                "gst_rate": float(it.gst_rate or 0),
+                "cgst": float(it.cgst or 0),
+                "sgst": float(it.sgst or 0),
+                "igst": float(it.igst or 0),
+                "product_name": it.product_name or "",
+                "size_name": it.size_name or "",
+                "hsn_code": it.hsn_code or "",
+                "sequence": it.sequence,
+            }
+            for it in (inv.items or [])
+        ],
+    }
 
 
 @router.post("/purchase-invoices", response_model=PurchaseInvoiceSchema)
 def create_purchase_invoice(invoice: PurchaseInvoiceSchema, request: Request, db: Session = Depends(get_db)):
-    supplier = db.query(Supplier).filter(Supplier.id == invoice.supplier_id).first()
+    # Accept both schema objects and plain dicts (tests call directly with dicts)
+    if isinstance(invoice, dict):
+        gid = invoice.get("supplier_id")
+    else:
+        gid = invoice.supplier_id
+    supplier = db.query(Supplier).filter(Supplier.id == gid).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
 
@@ -75,33 +128,94 @@ def create_purchase_invoice(invoice: PurchaseInvoiceSchema, request: Request, db
     from backend.app.services.document_sequence import next_purchase_invoice_number
     invoice_number = next_purchase_invoice_number(db)
 
+    if isinstance(invoice, dict):
+        inv_date = invoice.get("invoice_date")
+        if isinstance(inv_date, str):
+            inv_date = datetime.fromisoformat(inv_date)
+        transport = invoice.get("transport_charges") or 0
+        other = invoice.get("other_charges") or 0
+        total = invoice.get("total_amount") or 0
+        status = invoice.get("status")
+        items = invoice.get("items") or []
+    else:
+        inv_date = invoice.invoice_date
+        transport = invoice.transport_charges or 0
+        other = invoice.other_charges or 0
+        total = invoice.total_amount or 0
+        status = invoice.status
+        items = invoice.items or []
+
     inv = PurchaseInvoice(
         invoice_number=invoice_number,
-        supplier_id=invoice.supplier_id,
-        invoice_date=invoice.invoice_date,
-        transport_charges=invoice.transport_charges or 0,
-        other_charges=invoice.other_charges or 0,
-        total_amount=invoice.total_amount or 0,
-        status=invoice.status,
+        supplier_id=gid,
+        invoice_date=inv_date,
+        transport_charges=transport,
+        other_charges=other,
+        total_amount=total,
+        payment_status=status,
     )
     db.add(inv)
     db.flush()
 
     # Add items
-    for item in invoice.items:
-        db.add(PurchaseInvoiceItem(
-            purchase_invoice_id=inv.id,
-            raw_material_id=item.raw_material_id,
-            quantity=item.quantity,
-            rate=item.rate,
-            amount=item.amount,
-            transport_amount=item.transport_amount,
-        ))
+    for item in items:
+        if isinstance(item, dict):
+            db.add(PurchaseInvoiceItem(
+                purchase_invoice_id=inv.id,
+                raw_material_id=item.get("raw_material_id"),
+                quantity=item.get("quantity") or 0,
+                rate=item.get("rate") or 0,
+                amount=item.get("amount") or 0,
+                transport_amount=item.get("transport_amount") or 0,
+                unit=item.get("unit") or "kg",
+            ))
+        else:
+            db.add(PurchaseInvoiceItem(
+                purchase_invoice_id=inv.id,
+                raw_material_id=item.raw_material_id,
+                quantity=item.quantity,
+                rate=item.rate,
+                amount=item.amount,
+                transport_amount=item.transport_amount,
+            ))
 
-    _audit(db, request, "purchases", "create", record=inv, record_type="purchase_invoice", new_values={"invoice_number": invoice_number, "supplier_id": invoice.supplier_id})
+    _audit(db, request, "purchases", "create", record=inv, record_type="purchase_invoice", new_values={"invoice_number": invoice_number, "supplier_id": gid})
     db.commit()
     db.refresh(inv)
-    return inv
+    return {
+        "id": inv.id,
+        "invoice_number": inv.invoice_number,
+        "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+        "created_at": inv.created_at.isoformat() if inv.created_at else None,
+        "supplier_id": inv.supplier_id,
+        "supplier_name": supplier.name,
+        "supplier_company": supplier.company_name or "",
+        "gst_percent": float(inv.gst_percent or 0),
+        "other_charges": float(inv.other_charges or 0),
+        "transport_charges": float(inv.transport_charges or 0),
+        "discount": float(inv.discount or 0),
+        "total_amount": float(inv.total_amount or 0),
+        "paid_amount": float(inv.paid_amount or 0),
+        "outstanding_amount": float(inv.outstanding_amount or 0),
+        "notes": inv.notes,
+        "status": inv.payment_status.value if inv.payment_status else "",
+        "is_archived": inv.is_archived,
+        "archived_at": inv.archived_at.isoformat() if inv.archived_at else None,
+        "archived_by": inv.archived_by,
+        "items": [
+            {
+                "id": it.id,
+                "purchase_invoice_id": it.purchase_invoice_id,
+                "raw_material_id": it.raw_material_id,
+                "quantity": float(it.quantity or 0),
+                "unit": it.unit or "",
+                "rate": float(it.rate or 0),
+                "amount": float(it.amount or 0),
+                "transport_amount": float(it.transport_amount or 0),
+            }
+            for it in (inv.items or [])
+        ],
+    }
 
 
 @router.delete("/purchase-invoices/{invoice_id}")

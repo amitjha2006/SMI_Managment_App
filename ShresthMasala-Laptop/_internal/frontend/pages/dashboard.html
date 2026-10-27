@@ -162,6 +162,7 @@
     <label style="display:flex; align-items:center; gap:6px; font-size:13px; padding-bottom:9px; cursor:pointer; white-space:nowrap;">
       <input id="txn-fy-only" type="checkbox" onchange="toggleTxnFy()" /> Current FY only
     </label>
+    <button class="btn btn-secondary btn-sm" onclick="resetTxnFilters()">Reset</button>
   </div>
   <div id="txn-table"></div>
 </div>
@@ -784,6 +785,21 @@ function filterRecentTxns() {
   txnTypeFilter = sel ? sel.value : "";
   saveTxnFilters();
   renderRecentTxns();
+}
+
+function resetTxnFilters() {
+  const from = document.getElementById("txn-from");
+  const to = document.getElementById("txn-to");
+  const fy = document.getElementById("txn-fy-only");
+  const sel = document.getElementById("txn-type-filter");
+  if (from) from.value = "";
+  if (to) to.value = "";
+  if (fy) fy.checked = false;
+  if (sel) sel.value = "";
+  txnTypeFilter = "";
+  // Rewrite the saved filter state blank so a reload doesn't resurrect filters.
+  saveTxnFilters();
+  loadRecentTxns(txnExpanded ? 50 : 10);
 }
 
 // Date window + FY preset. The server filters on the business date; the

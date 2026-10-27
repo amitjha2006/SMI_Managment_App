@@ -1,4 +1,5 @@
 """Sales challan, finished stock, stock adjustments, analysis routes"""
+import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -9,15 +10,20 @@ from backend.app.core.database import get_db
 from backend.app.models import (
     Customer,
     CustomerPayment,
+    Expense,
+    ExpenseCategory,
     FinishedProductStockMovement,
     PackagingSize,
     Product,
+    PurchaseInvoice,
     RawMaterial,
     RawMaterialStockMovement,
     SalesChallan,
     SalesChallanItem,
     SalesInvoice,
     SalesInvoiceItem,
+    Supplier,
+    SupplierPayment,
 )
 from backend.app.models.finished_product import FinishedProductMovementType
 from backend.app.schemas import SalesChallanSchema, ChallanStatus, SalesInvoiceSchema, CustomerPaymentSchema
@@ -541,6 +547,155 @@ def create_sales_invoice(payload: dict, request: Request, db: Session = Depends(
     db.commit()
     db.refresh(inv)
     return inv
+
+
+@router.get("/invoices")
+def list_sales_invoices(db: Session = Depends(get_db)):
+    """List sales invoices with customer and challan for the invoices page."""
+    rows = (
+        db.query(SalesInvoice, Customer, SalesChallan)
+        .join(Customer, SalesInvoice.customer_id == Customer.id)
+        .join(SalesChallan, SalesInvoice.challan_id == SalesChallan.id)
+        .order_by(SalesInvoice.id.desc())
+        .all()
+    )
+    return [
+        {
+            "id": inv.id,
+            "invoice_number": inv.invoice_number,
+            "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+            "created_at": inv.invoice_date.isoformat() if inv.invoice_date else None,
+            "customer_name": cust.name,
+            "challan_number": ch.challan_number,
+            "challan_id": ch.id,
+            "grand_total": float(inv.grand_total or 0),
+            "cgst": float(inv.cgst or 0),
+            "sgst": float(inv.sgst or 0),
+            "igst": float(inv.igst or 0),
+        }
+        for inv, cust, ch in rows
+    ]
+
+
+def search_all(db, q: str = "", include_payments: bool = True, include_expenses: bool = True) -> dict:
+    """Global search across masters, challans, invoices, payments and expenses.
+
+    Payments are matched by their display code (RCPT-##### / PAY-#####).
+    Expenses are matched by description, capped at 8. Blank query returns
+    empty groups. The flags let callers (e.g. a restricted profile) drop
+    whole groups.
+    """
+    q = (q or "").strip()
+    result = {
+        "customers": [],
+        "challans": [],
+        "invoices": [],
+        "products": [],
+        "suppliers": [],
+        "payments": [],
+        "expenses": [],
+    }
+    if not q:
+        return result
+    like = f"%{q}%"
+
+    customers = db.query(Customer).filter(Customer.name.ilike(like)).limit(20).all()
+    result["customers"] = [
+        {"name": c.name, "company": c.company_name or "", "contact": c.contact_number or ""}
+        for c in customers
+    ]
+
+    challans = (
+        db.query(SalesChallan)
+        .filter(SalesChallan.challan_number.ilike(like))
+        .limit(20)
+        .all()
+    )
+    result["challans"] = [
+        {
+            "number": c.challan_number,
+            "customer": c.customer.name if c.customer else "",
+            "status": c.status or "",
+        }
+        for c in challans
+    ]
+
+    invoices = (
+        db.query(SalesInvoice)
+        .filter(SalesInvoice.invoice_number.ilike(like))
+        .limit(20)
+        .all()
+    )
+    result["invoices"] = [{"number": inv.invoice_number, "supplier": ""} for inv in invoices]
+
+    products = db.query(Product).filter(Product.name.ilike(like)).limit(20).all()
+    result["products"] = [{"name": p.name} for p in products]
+
+    suppliers = db.query(Supplier).filter(Supplier.name.ilike(like)).limit(20).all()
+    result["suppliers"] = [
+        {"name": s.name, "company": s.company_name or "", "contact": s.contact_number or ""}
+        for s in suppliers
+    ]
+
+    if include_payments:
+        code = re.match(r"^(RCPT|PAY)-(\d{1,6})$", q)
+        if code:
+            kind, num = code.group(1), int(code.group(2))
+            if kind == "RCPT":
+                p = db.query(CustomerPayment).filter(CustomerPayment.id == num).first()
+                if p:
+                    ch = db.query(SalesChallan).filter(SalesChallan.id == p.challan_id).first()
+                    result["payments"] = [
+                        {
+                            "code": f"RCPT-{p.id:04d}",
+                            "kind": "receipt",
+                            "id": p.id,
+                            "challan_id": p.challan_id,
+                            "invoice_id": None,
+                            "customer": ch.customer.name if ch and ch.customer else "",
+                            "supplier": "",
+                            "amount": float(p.amount or 0),
+                            "date": p.payment_date.isoformat() if p.payment_date else None,
+                        }
+                    ]
+            else:
+                p = db.query(SupplierPayment).filter(SupplierPayment.id == num).first()
+                if p:
+                    inv = db.query(PurchaseInvoice).filter(PurchaseInvoice.id == p.purchase_invoice_id).first()
+                    result["payments"] = [
+                        {
+                            "code": f"PAY-{p.id:04d}",
+                            "kind": "payment",
+                            "id": p.id,
+                            "challan_id": None,
+                            "invoice_id": p.purchase_invoice_id,
+                            "customer": "",
+                            "supplier": inv.supplier.name if inv and inv.supplier else "",
+                            "amount": float(p.amount or 0),
+                            "date": p.payment_date.isoformat() if p.payment_date else None,
+                        }
+                    ]
+
+    if include_expenses:
+        expense_rows = (
+            db.query(Expense, ExpenseCategory)
+            .outerjoin(ExpenseCategory, Expense.category_id == ExpenseCategory.id)
+            .filter(Expense.description.ilike(like))
+            .order_by(Expense.date.desc())
+            .limit(8)
+            .all()
+        )
+        result["expenses"] = [
+            {
+                "description": e.description,
+                "category": c.name if c else "",
+                "date": e.date.isoformat() if e.date else None,
+                "amount": float(e.amount or 0),
+            }
+            for e, c in expense_rows
+        ]
+
+    return result
 
 
 # Customer Payment

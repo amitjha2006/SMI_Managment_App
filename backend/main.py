@@ -349,6 +349,8 @@ payroll_run = employees.run_payroll
 # Sales route aliases
 create_sales_invoice = sales.create_sales_invoice
 create_customer_payment = sales.create_customer_payment
+list_sales_invoices = sales.list_sales_invoices
+search_all = sales.search_all
 
 # Backup test-facing aliases
 from backend.app.routes import backup as backup_routes
@@ -663,6 +665,11 @@ async def no_store_for_api(request: Request, call_next):
 @app.get("/api")
 def api_root():
     return {"message": "Shresth Masala Industry Management API", "version": "0.1.0"}
+
+
+@app.get("/search")
+def search(q: str = "", db: Session = Depends(get_db)):
+    return search_all(db, q)
 
 
 # Auto-backup scheduler

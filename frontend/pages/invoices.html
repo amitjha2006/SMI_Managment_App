@@ -307,6 +307,7 @@
 
   window.resetSalesInvoiceFilters = function () {
     document.getElementById("sales-search").value = "";
+    saveInvoiceFilters();
     window.filterSalesInvoices();
   };
 

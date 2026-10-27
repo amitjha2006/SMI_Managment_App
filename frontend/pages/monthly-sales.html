@@ -226,10 +226,14 @@
   window.renderPivot = renderPivot;
 
   // Blank the search box and category filter; the year/FY choice is the
-  // dataset being viewed, not a filter, so it stays.
+  // dataset being viewed, not a filter, so it stays. Rewrite the saved
+  // filter state blank so a reload doesn't resurrect cleared filters.
   window.resetMonthlySalesFilters = function () {
     document.getElementById("ms-search").value = "";
     document.getElementById("ms-cat").value = "";
+    window.UI.saveFilterState("monthly-sales-filters", {
+      search: "", category: ""
+    });
     renderPivot();
   };
 
@@ -372,6 +376,16 @@
   fillYears();
   loadPivot();
   loadMsCategories();
+  // Restore saved filter state (search + category) if any.
+  const savedMs = window.UI.loadFilterState("monthly-sales-filters");
+  if (savedMs) {
+    const sEl = document.getElementById("ms-search");
+    const cEl = document.getElementById("ms-cat");
+    if (sEl && typeof savedMs.search === "string") sEl.value = savedMs.search;
+    if (cEl && typeof savedMs.category === "string") cEl.value = savedMs.category;
+    renderPivot();
+    renderSuggest();
+  }
   document.getElementById("pl-month").value =
     new Date().getFullYear() + "-" + String(new Date().getMonth() + 1).padStart(2, "0");
   loadProfit();

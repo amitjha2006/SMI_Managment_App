@@ -1,4 +1,5 @@
 """Shared utilities for routes — extracted from main.py to avoid circular imports."""
+import re
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -354,29 +355,51 @@ def _send_login_alert(db: Session, request, username: str) -> None:
     )
 
 
-def _send_email(db: Session, to_email: str, subject: str, body: str) -> bool:
-    """Generic email sender using configured SMTP settings."""
+def _send_email(db: Session, to_email: str, subject: str, body: str) -> dict:
+    """Send an email to one or more recipients.
+
+    Recipients are a free-text string split on commas/semicolons. Each
+    address is validated before anything is sent: a malformed address
+    raises HTTP 400 and nothing is sent. Returns {"to": [addresses]}.
+    """
     from backend.app.models import ApplicationSetting
-    settings_row = db.query(ApplicationSetting).filter(ApplicationSetting.key == "email").first()
-    if not settings_row:
-        return False
-    cfg = settings_row.value
-    try:
-        import smtplib
-        from email.mime.text import MIMEText
-        msg = MIMEText(body)
-        msg["Subject"] = subject
-        msg["From"] = cfg.get("from_addr", cfg.get("username", ""))
-        msg["To"] = to_email
-        with smtplib.SMTP(cfg["smtp_host"], cfg.get("smtp_port", 587)) as server:
-            if cfg.get("use_tls", True):
-                server.starttls()
-            if cfg.get("username") and cfg.get("password"):
-                server.login(cfg["username"], cfg["password"])
-            server.send_message(msg)
-        return True
-    except Exception:
-        return False
+    from fastapi import HTTPException
+
+    def _get(key: str, default=None):
+        row = db.query(ApplicationSetting).filter(ApplicationSetting.key == key).first()
+        return row.value if row else default
+
+    host = _get("email.smtp_host")
+    if not host:
+        raise HTTPException(status_code=400, detail="SMTP host not configured")
+    username = _get("email.username")
+    password = _get("email.password")
+    port = int(_get("email.smtp_port", "587") or 587)
+    use_tls = str(_get("email.use_tls", "true")).lower() != "false"
+    from_addr = _get("email.from_addr", username or "")
+
+    raw = (to_email or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="No recipient address")
+    parts = [p.strip() for p in re.split(r"[;,]", raw) if p.strip()]
+    for addr in parts:
+        if "@" not in addr or "." not in addr.split("@")[-1]:
+            raise HTTPException(status_code=400, detail=f"Bad email address: {addr}")
+
+    import smtplib
+    from email.mime.text import MIMEText
+
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = from_addr
+    msg["To"] = ", ".join(parts)
+    with smtplib.SMTP(host, port) as server:
+        if use_tls:
+            server.starttls()
+        if username and password:
+            server.login(username, password)
+        server.sendmail(from_addr, parts, msg.as_string())
+    return {"to": parts}
 
 
 def _send_email_test(db: Session, to_email: str) -> bool:

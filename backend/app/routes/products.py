@@ -1,8 +1,10 @@
 """Product, category, packaging, formulation, workflow routes"""
 from decimal import Decimal
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import func
+from sqlalchemy import func, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
@@ -625,3 +627,65 @@ def report_by_category(
             cat_totals[cat_name]["amount"] += float(item.amount or 0)
 
     return [{"category": k, "quantity": v["qty"], "amount": v["amount"]} for k, v in cat_totals.items()]
+
+
+def _attach_sizes_to_product(db: Session, product: Product, sizes: list[dict]) -> tuple[list[str], list[str]]:
+    """Attach packaging sizes to a product.
+
+    Normalizes bare "loose"/"loose masala" spellings to "Loose Powder".
+    Dedupes case-insensitively against existing sizes; existing sizes go to
+    skipped, newly created go to added. Catches IntegrityError (race with
+    another request inserting the same size) and treats it as skipped.
+    Expires the product's packaging_sizes collection so a stale cache never
+    causes a duplicate insert.
+    """
+    added: list[str] = []
+    skipped: list[str] = []
+
+    for entry in sizes or []:
+        size_name = (entry.get("size_name") or "").strip()
+        if not size_name:
+            continue
+        if size_name.casefold() in ("loose", "loose masala"):
+            size_name = "Loose Powder"
+
+        weight = entry.get("weight_in_kg")
+        try:
+            weight = Decimal(str(weight)) if weight is not None else Decimal("1")
+        except Exception:
+            weight = Decimal("1")
+
+        # Check existing (case-insensitive) — expire first so a stale cache
+        # from a previous call doesn't hide a size added by another request.
+        db.expire(product, ["packaging_sizes"])
+        existing = None
+        for ps in product.packaging_sizes:
+            if (ps.size_name or "").strip().casefold() == size_name.casefold():
+                existing = ps
+                break
+
+        if existing:
+            skipped.append(size_name)
+            continue
+
+        pack = PackagingSize(
+            product_id=product.id,
+            size_name=size_name,
+            weight_in_kg=weight,
+            rate_per_kg=entry.get("rate_per_kg") or Decimal("0"),
+            packets_per_unit=entry.get("packets_per_unit") or 1,
+            is_active=True,
+        )
+        try:
+            db.add(pack)
+            db.flush()
+        except IntegrityError:
+            # Another request inserted the same size between our check and
+            # the insert: treat as skipped, not a 500.
+            db.rollback()
+            skipped.append(size_name)
+            continue
+
+        added.append(size_name)
+
+    return added, skipped

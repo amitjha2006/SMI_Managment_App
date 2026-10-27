@@ -797,6 +797,12 @@ def dues_followup(db: Session = Depends(get_db)):
     return result
 
 
+@router.get("/expenses/history")
+def expense_history(db: Session = Depends(get_db)):
+    """Distinct expense payees and descriptions for datalist pickers."""
+    return expense_history_options(db)
+
+
 # Daily report sections for the morning mail / scheduled report.
 REPORT_SECTION_CHOICES = ["dues", "stock", "production", "purchases", "expenses"]
 
@@ -835,3 +841,32 @@ def _build_daily_report(db, sections):
     text = "\n".join(lines)
     html_body = "\n".join(html)
     return subject, text, html_body
+
+
+def expense_history_options(db: Session):
+    """Distinct expense payees and descriptions for datalist pickers.
+
+    Most-recent-first, case-insensitive dedup (latest casing wins).
+    Returns {"payees": [...], "descriptions": [...]}.
+    """
+    rows = (
+        db.query(Expense)
+        .order_by(Expense.date.desc(), Expense.id.desc())
+        .all()
+    )
+    payees, descriptions = [], []
+    seen_p, seen_d = set(), set()
+    for e in rows:
+        payee = (e.payee or "").strip()
+        if payee:
+            key = payee.casefold()
+            if key not in seen_p:
+                seen_p.add(key)
+                payees.append(payee)
+        desc = (e.description or "").strip()
+        if desc:
+            key = desc.casefold()
+            if key not in seen_d:
+                seen_d.add(key)
+                descriptions.append(desc)
+    return {"payees": payees, "descriptions": descriptions}

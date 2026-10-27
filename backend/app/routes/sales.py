@@ -39,6 +39,7 @@ from backend.app.core.shared import (
     _request_user_and_role,
 )
 from backend.app.services import challan_snapshot as _snap
+from backend.app.services.pdf_export import render_invoice_pdf
 from backend.app.services.stock_posting import challan_stock_posted, post_challan_sales_movements
 
 router = APIRouter()
@@ -974,15 +975,27 @@ def record_opening_stock(payload: dict, request: Request, db: Session = Depends(
 
 # Stock adjustments
 @router.get("/stock-adjustments/reasons")
-def stock_adjustment_reasons():
-    return [
-        "damage",
-        "theft",
-        "expired",
-        "quality_reject",
-        "measurement_error",
-        "other",
-    ]
+def stock_adjustment_reasons(db: Session = Depends(get_db)):
+    """Distinct adjustment reasons from finished-goods and raw-material
+    movements, most-recent-first, case-insensitive dedup."""
+    rows = (
+        db.query(FinishedProductStockMovement.notes)
+        .filter(FinishedProductStockMovement.movement_type == "adjustment",
+                FinishedProductStockMovement.notes.isnot(None))
+        .all()
+    ) + (
+        db.query(RawMaterialStockMovement.notes)
+        .filter(RawMaterialStockMovement.movement_type == "adjustment",
+                RawMaterialStockMovement.notes.isnot(None))
+        .all()
+    )
+    reasons, seen = [], set()
+    for (note,) in rows:
+        key = (note or "").strip().casefold()
+        if key and key not in seen:
+            seen.add(key)
+            reasons.append((note or "").strip())
+    return {"reasons": reasons}
 
 
 @router.get("/stock-adjustments")
@@ -1526,3 +1539,138 @@ def monthly_sales_export(
     writer.writerow(["Month", "Quantity", "Amount"])
     writer.writerows(rows)
     return PlainTextResponse(output.getvalue(), media_type="text/csv")
+
+
+def _invoice_to_dict(inv: SalesInvoice, db: Session = None) -> dict:
+    """Convert a SalesInvoice ORM row to the dict that render_invoice_pdf
+    and the invoice print view expect."""
+    company = {}
+    if db is not None:
+        from backend.app.services.challan_snapshot import company_profile as _cp
+        company = _cp(db)
+    cust = inv.customer
+    items = []
+    for it in (inv.items or []):
+        items.append({
+            "product_name": it.product_name or "",
+            "size_name": it.size_name or "",
+            "hsn_code": it.hsn_code or "",
+            "quantity": float(it.quantity or 0),
+            "weight": float(it.weight or 0),
+            "rate_per_kg": float(it.rate_per_kg or 0),
+            "amount": float(it.amount or 0),
+            "taxable_value": float(it.taxable_value or 0),
+            "gst_rate": float(it.gst_rate or 0),
+            "cgst": float(it.cgst or 0),
+            "sgst": float(it.sgst or 0),
+            "igst": float(it.igst or 0),
+        })
+    return {
+        "invoice_number": inv.invoice_number or "",
+        "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+        "challan_number": inv.challan.challan_number if inv.challan else "",
+        "company_name": inv.company_name or company.get("name", ""),
+        "company_address": inv.company_address or company.get("address", ""),
+        "company_phone": inv.company_phone or company.get("phone", ""),
+        "company_email": inv.company_email or company.get("email", ""),
+        "company_gstin": inv.company_gstin or company.get("gstin", ""),
+        "cust_company_name": inv.cust_company_name or (cust.company_name if cust else ""),
+        "cust_address": inv.cust_address or (cust.address if cust else ""),
+        "cust_gst_no": inv.cust_gst_no or (cust.gst_no if cust else ""),
+        "cust_contact_number": inv.cust_contact_number or (cust.contact_number if cust else ""),
+        "customer_email": cust.email if cust else "",
+        "customer_name": cust.name if cust else "",
+        "intra_state": bool(inv.intra_state),
+        "place_of_supply": inv.place_of_supply or "",
+        "items": items,
+        "taxable_value": float(inv.taxable_value or 0),
+        "cgst": float(inv.cgst or 0),
+        "sgst": float(inv.sgst or 0),
+        "igst": float(inv.igst or 0),
+        "grand_total": float(inv.grand_total or 0),
+        "total_in_words": "",
+        "company_terms": inv.company_terms or company.get("terms", ""),
+    }
+
+
+@router.post("/invoices/{inv_id}/email")
+def send_invoice_email(inv_id: int, payload: dict, request: Request, db: Session = Depends(get_db)):
+    """Email a sales invoice PDF to the customer.
+
+    Defaults to the customer's email; explicit addresses are validated
+    through the same recipient rules as _send_email. The PDF bytes go out
+    as a real attachment with the invoice number in the filename.
+    """
+    inv = db.query(SalesInvoice).filter(SalesInvoice.id == inv_id).first()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    to_email = (payload or {}).get("to") or ""
+    if not to_email:
+        cust = db.query(Customer).filter(Customer.id == inv.customer_id).first()
+        to_email = cust.email if cust else ""
+    if not to_email:
+        raise HTTPException(status_code=400, detail="No email address on customer or request")
+
+    # Validate addresses using the same rule as _send_email
+    parts = [p.strip() for p in re.split(r"[;,]", to_email) if p.strip()]
+    for addr in parts:
+        if "@" not in addr or "." not in addr.split("@")[-1]:
+            raise HTTPException(status_code=400, detail=f"Bad email address: {addr}")
+
+    pdf_bytes = render_invoice_pdf(_invoice_to_dict(inv, db))
+
+    from backend.app.models import ApplicationSetting
+    from email.mime.application import MIMEApplication
+    from email.mime.multipart import MIMEMultipart
+
+    def _get(key, default=None):
+        row = db.query(ApplicationSetting).filter(ApplicationSetting.key == key).first()
+        return row.value if row else default
+
+    host = _get("email.smtp_host")
+    if not host:
+        raise HTTPException(status_code=400, detail="SMTP host not configured")
+    username = _get("email.username")
+    password = _get("email.password")
+    port = int(_get("email.smtp_port", "587") or 587)
+    use_tls = str(_get("email.use_tls", "true")).lower() != "false"
+    from_addr = _get("email.from_addr", username or "")
+
+    import smtplib
+    from email.mime.text import MIMEText
+
+    msg = MIMEMultipart()
+    msg["Subject"] = f"Invoice {inv.invoice_number}"
+    msg["From"] = from_addr
+    msg["To"] = ", ".join(parts)
+    msg.attach(MIMEText(f"Please find attached invoice {inv.invoice_number}."))
+    part = MIMEApplication(pdf_bytes, _subtype="pdf")
+    part.add_header("Content-Disposition", "attachment",
+                    filename=f"{inv.invoice_number}.pdf")
+    msg.attach(part)
+
+    with smtplib.SMTP(host, port) as server:
+        if use_tls:
+            server.starttls()
+        if username and password:
+            server.login(username, password)
+        server.sendmail(from_addr, parts, msg.as_string())
+
+    return {"to": parts, "invoice_id": inv_id, "invoice_number": inv.invoice_number}
+
+
+@router.get("/invoices/{inv_id}/pdf")
+def download_invoice_pdf(inv_id: int, db: Session = Depends(get_db)):
+    """Download a sales invoice as PDF."""
+    inv = db.query(SalesInvoice).filter(SalesInvoice.id == inv_id).first()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    pdf_bytes = render_invoice_pdf(_invoice_to_dict(inv, db))
+    import io
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{inv.invoice_number}.pdf"'},
+    )

@@ -1,9 +1,14 @@
 """Import/export routes"""
+import asyncio
+import json
+import shutil
+from datetime import datetime
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
-from sqlalchemy.orm import Session
 from fastapi.responses import PlainTextResponse, StreamingResponse
+from sqlalchemy.orm import Session
 
-from backend.app.core.database import get_db
+from backend.app.core.database import get_db, _live_db_path, _do_backup
 from backend.app.models import (
     Customer,
     CustomerPayment,
@@ -14,6 +19,9 @@ from backend.app.models import (
     RawMaterial,
     SalesChallan,
     Supplier,
+    BackupRecord,
+    ImportReport,
+    AuditLog,
 )
 from backend.app.core.shared import (
     _audit,
@@ -49,55 +57,161 @@ def import_reports(db: Session = Depends(get_db), limit: int | None = None):
     q = db.query(ImportReport).order_by(ImportReport.id.desc())
     if limit is not None:
         q = q.limit(limit)
-    return q.all()
+    return [
+        {
+            "id": r.id,
+            "import_type": r.import_type,
+            "filename": r.filename,
+            "total_rows": r.total_rows,
+            "imported": r.imported,
+            "skipped": r.skipped,
+            "failed": r.failed,
+            "errors": json.loads(r.errors) if r.errors else [],
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in q.all()
+    ]
 
 
 @router.get("/import/undo-status")
-def import_undo_status(import_type: str, db: Session = Depends(get_db)):
+def import_undo_status(db: Session = Depends(get_db), import_type: str | None = None):
     """Check if an import can be undone."""
-    from backend.app.models import ImportReport
-    report = db.query(ImportReport).filter(ImportReport.import_type == import_type).order_by(ImportReport.id.desc()).first()
+    import json
+    q = db.query(AuditLog).filter(AuditLog.module == "import")
+    if import_type:
+        q = q.filter(AuditLog.record_type == f"import_{import_type}")
+    report = q.order_by(AuditLog.id.desc()).first()
     if not report:
-        return {"can_undo": False, "reason": "No import found for this type"}
-    if report.undone:
-        return {"can_undo": False, "reason": "Already undone"}
-    return {"can_undo": True, "report_id": report.id, "imported_at": report.created_at.isoformat() if report.created_at else None}
+        return {"available": False, "reason": "No import found"}
+    try:
+        vals = json.loads(report.new_values or "{}")
+    except Exception:
+        vals = {}
+    undone = bool(report.notes and "undone" in report.notes.lower())
+    if undone:
+        return {"available": False, "reason": "Already undone"}
+    backup_id = vals.get("pre_import_backup_id")
+    backup_filename = vals.get("pre_import_backup", "")
+    if not backup_id:
+        return {"available": False, "reason": "No safety copy"}
+    backup = db.query(BackupRecord).filter(BackupRecord.id == backup_id).first()
+    if not backup or not Path(backup.file_path).exists():
+        return {"available": False, "reason": "Backup file missing"}
+    return {
+        "available": True,
+        "import_type": (report.record_type or "").replace("import_", "") or import_type or "unknown",
+        "report_id": report.id,
+        "imported_file": vals.get("filename", ""),
+        "imported": vals.get("imported", 0),
+        "backup_id": backup_id,
+        "backup_filename": backup_filename,
+    }
+
+
+@router.post("/import/prune-backups")
+def _prune_pre_import_backups(db: Session = Depends(get_db)):
+    """Keep only the newest five pre-import safety copies; delete the rest."""
+    rows = (
+        db.query(BackupRecord)
+        .filter(BackupRecord.filename.like("pre-import_%"))
+        .order_by(BackupRecord.backup_date.desc(), BackupRecord.id.desc())
+        .all()
+    )
+    for row in rows[5:]:
+        try:
+            Path(row.file_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+        db.delete(row)
+    db.commit()
+    return {"pruned": len(rows) - 5 if len(rows) > 5 else 0}
 
 
 @router.post("/import/undo")
-def undo_import(payload: dict, request: Request, db: Session = Depends(get_db)):
+def undo_last_import(request: Request, db: Session = Depends(get_db), payload: dict = None):
     """Undo the last import of a given type."""
     import_type = (payload or {}).get("import_type")
-    if not import_type:
-        raise HTTPException(status_code=400, detail="import_type required")
-
-    from backend.app.models import ImportReport
-    report = db.query(ImportReport).filter(ImportReport.import_type == import_type, ImportReport.undone == False).order_by(ImportReport.id.desc()).first()
+    import json
+    q = db.query(AuditLog).filter(AuditLog.module == "import")
+    if import_type:
+        q = q.filter(AuditLog.record_type == f"import_{import_type}")
+    report = q.order_by(AuditLog.id.desc()).first()
     if not report:
         raise HTTPException(status_code=404, detail="No import to undo")
 
-    report.undone = True
-    report.undone_at = _ist_wall()
-    report.undone_by = _request_user_and_role(db, request)[0].id if _request_user_and_role(db, request)[0] else None
+    # Restore the pre-import safety copy over the live DB
+    try:
+        vals = json.loads(report.new_values or "{}")
+    except Exception:
+        vals = {}
+    backup_id = vals.get("pre_import_backup_id")
+    backup_filename = vals.get("pre_import_backup", "")
+    if backup_id:
+        backup = db.query(BackupRecord).filter(BackupRecord.id == backup_id).first()
+        if backup and Path(backup.file_path).exists():
+            shutil.copy2(backup.file_path, _live_db_path())
 
-    _audit(db, request, "import", "undo", record=report, record_type="import_report", new_values={"import_type": import_type, "undone": True})
+    report.notes = (report.notes or "") + " undone"
+    _audit(db, request, "import", "undo", record=report, record_type="import_report",
+           new_values={"import_type": import_type, "undone": True})
     db.commit()
     return {"status": "undone", "import_type": import_type, "report_id": report.id}
 
 
 @router.post("/import/{import_type}")
-def import_data(import_type: str, file: UploadFile = File(...), request: Request = None, db: Session = Depends(get_db)):
-    """Import data from Excel file."""
+async def import_data(import_type: str, request: Request = None, file: UploadFile = File(None), sheet: str | None = None, db: Session = Depends(get_db)):
+    """Import data from Excel file, taking a pre-import safety copy first."""
     if import_type not in IMPORTERS:
         raise HTTPException(status_code=400, detail="Unknown import type: " + import_type)
 
-    content = file.file.read()
-    try:
-        df = read_excel_file(content)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail="Failed to read Excel file: " + str(e))
+    import sys
+    main_mod = sys.modules.get("backend.main")
+    _do_backup_fn = getattr(main_mod, "_do_backup", None) if main_mod else None
+    if _do_backup_fn is None:
+        from backend.app.core.database import _do_backup as _do_backup_fn
+    _run_import_fn = getattr(main_mod, "run_import", None) if main_mod else None
+    if _run_import_fn is None:
+        from backend.app.services.excel_import import run_import as _run_import_fn
 
-    result = run_import(db, import_type, df, request)
+    # Pre-import safety copy
+    backup_rec = _do_backup_fn(
+        db, is_auto=False,
+        description=f"Pre-import {import_type} {getattr(file, 'filename', '')}",
+        prefix="pre-import_",
+    )
+
+    if file is None:
+        raise HTTPException(status_code=400, detail="file required")
+    if hasattr(file, "file"):
+        content = file.file.read()
+    else:
+        content = file.read()
+    if asyncio.iscoroutine(content):
+        content = await content
+
+    # Persist the import report row first so a failed import still leaves a record.
+    from backend.app.models import ImportReport as _IR
+    report = _IR(
+        import_type=import_type,
+        filename=getattr(file, "filename", "upload"),
+        imported=0,
+    )
+    db.add(report)
+    db.commit()
+
+    try:
+        result = _run_import_fn(db, import_type, content, sheet)
+        result["pre_import_backup"] = backup_rec.filename
+        report.imported = result.get("imported", 0)
+        db.commit()
+    except Exception as e:
+        report.failed = 1
+        report.errors = json.dumps([{"message": str(e)}])
+        db.commit()
+        raise HTTPException(status_code=500, detail="Import failed: " + str(e))
+
+    _audit(db, request, "import", "create", record_type="import_report",
+           new_values={"import_type": import_type, "pre_import_backup_id": backup_rec.id, "pre_import_backup": backup_rec.filename, "imported": result.get("imported", 0)})
     return result
 
 

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
+import shutil
 
 from sqlalchemy import Numeric, create_engine, event
 from sqlalchemy.exc import IntegrityError, OperationalError
@@ -526,3 +527,42 @@ def _seed_expense_categories(db=None):
         if own:
             db.close()
     return added
+
+
+def _live_db_path():
+    """Path to the live (writable) SQLite database file."""
+    from pathlib import Path
+    return Path(settings.DB_PATH)
+
+
+def _do_backup(db: Session, is_auto: bool = True, description: str = "", prefix: str = ""):
+    """Copy the live DB to the backup folder and record it.
+
+    Returns the BackupRecord row. The backup folder comes from the
+    ``backup.folder`` application setting when set, otherwise
+    ``data/backups/`` next to the live DB.
+    """
+    from pathlib import Path
+    from backend.app.models import BackupRecord, ApplicationSetting
+
+    live = _live_db_path()
+
+    folder_row = db.query(ApplicationSetting).filter(ApplicationSetting.key == "backup.folder").first()
+    backup_folder = Path(folder_row.value) if (folder_row and folder_row.value) else live.parent / "backups"
+    backup_folder.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{prefix}{ts}.db" if prefix else f"backup_{ts}.db"
+    dest = backup_folder / filename
+    shutil.copy2(str(live), str(dest))
+
+    rec = BackupRecord(
+        filename=filename, file_path=str(dest),
+        file_size=dest.stat().st_size,
+        backup_date=_ist_wall(),
+        description=description, is_auto=is_auto,
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return rec

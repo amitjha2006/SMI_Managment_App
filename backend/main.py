@@ -44,8 +44,10 @@ from backend.app.core.config import settings
 from backend.app.core.database import (
     IST,
     SessionLocal,
+    _do_backup,
     _ist_now,
     _ist_wall,
+    _live_db_path,
     engine,
     get_db,
     init_db,
@@ -195,6 +197,7 @@ from backend.app.core.shared import (
     _request_user_and_role,
     _restore_record,
     _require_admin,
+    _send_email,
     _send_email_test,
     _send_login_alert,
     _send_scheduled_report,
@@ -359,6 +362,13 @@ list_invoices = sales.list_sales_invoices
 challan_dispatch_options = sales.challan_dispatch_options
 stock_adjustment_reasons = sales.stock_adjustment_reasons
 search_all = sales.search_all
+send_invoice_email = sales.send_invoice_email
+download_invoice_pdf = sales.download_invoice_pdf
+_invoice_to_dict = sales._invoice_to_dict
+expense_history_options = reports.expense_history_options
+_send_email = _send_email
+_do_backup = _do_backup
+_live_db_path = _live_db_path
 
 # Backup test-facing aliases
 from backend.app.routes import backup as backup_routes
@@ -394,10 +404,14 @@ packaging_rate_history = products.size_rate_history
 size_rate_history = products.size_rate_history
 delete_packaging_size = products.delete_packaging_size
 set_product_help = products.update_product_help
+_attach_sizes_to_product = products._attach_sizes_to_product
 customer_statement = customers.customer_statement
 set_editor_mode = auth.set_editor_mode
 list_import_reports = import_export.import_reports
 import_undo_status = import_export.import_undo_status
+import_data = import_export.import_data
+undo_last_import = import_export.undo_last_import
+_prune_pre_import_backups = import_export._prune_pre_import_backups
 
 # Reports route aliases
 sales_trend = reports.sales_trend

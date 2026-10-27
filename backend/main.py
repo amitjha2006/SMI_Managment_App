@@ -383,6 +383,7 @@ packaging_rate_history = products.size_rate_history
 size_rate_history = products.size_rate_history
 delete_packaging_size = products.delete_packaging_size
 set_product_help = products.update_product_help
+customer_statement = customers.customer_statement
 
 # Reports route aliases
 sales_trend = reports.sales_trend

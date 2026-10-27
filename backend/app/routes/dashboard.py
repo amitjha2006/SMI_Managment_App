@@ -200,7 +200,7 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     ).all()
 
     payables_aging = {"d30": 0, "d60": 0, "over60": 0}
-    payables_overdue = 0
+    payables_overdue = {"count": 0, "amount": 0.0}
     for inv in payables_due:
         days = (now - inv.invoice_date).days if inv.invoice_date else 0
         if days <= 30:
@@ -210,7 +210,8 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         else:
             payables_aging["over60"] += 1
         if days > 0:
-            payables_overdue += 1
+            payables_overdue["count"] += 1
+            payables_overdue["amount"] += float(inv.outstanding_amount or 0)
 
     receivables_overdue = d60 + over60
 

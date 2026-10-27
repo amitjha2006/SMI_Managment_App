@@ -43,14 +43,14 @@ def list_purchase_invoices(db: Session = Depends(get_db)):
             "id": inv.id,
             "invoice_number": inv.invoice_number,
             "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
-            "created_at": inv.invoice_date.isoformat() if inv.invoice_date else None,
+            "created_at": inv.created_at.isoformat() if inv.created_at else None,
             "supplier_id": inv.supplier_id,
             "supplier_name": sup.name,
             "supplier_company": sup.company_name or "",
             "total_amount": float(inv.total_amount or 0),
             "paid_amount": float(inv.paid_amount or 0),
             "outstanding_amount": float(inv.outstanding_amount or 0),
-            "status": inv.status,
+            "status": inv.payment_status,
             "is_archived": inv.is_archived,
         }
         for inv, sup in rows

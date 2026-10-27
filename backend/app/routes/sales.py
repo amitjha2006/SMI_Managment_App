@@ -44,28 +44,39 @@ from backend.app.services.stock_posting import challan_stock_posted, post_challa
 router = APIRouter()
 
 
-# Challan routes
 @router.get("/challans/dispatch-options")
-def dispatch_options(db: Session = Depends(get_db)):
-    """Challans eligible for dispatch (confirmed, not dispatched, not archived)."""
-    challans = db.query(SalesChallan).filter(
-        SalesChallan.status == ChallanStatus.CONFIRMED,
-        SalesChallan.dispatched == False,  # noqa: E712
-        SalesChallan.is_archived == False,  # noqa: E712
-    ).order_by(SalesChallan.challan_date.desc()).all()
-    return [
-        {
-            "id": c.id,
-            "challan_number": c.challan_number,
-            "customer_id": c.customer_id,
-            "customer_name": c.customer.name if c.customer else None,
-            "date": c.challan_date.isoformat() if c.challan_date else None,
-            "total_amount": float(c.total_price or 0),
-        }
-        for c in challans
-    ]
+def challan_dispatch_options(db: Session = Depends(get_db)):
+    """Distinct transporters and vehicles from recent challans for datalists.
+
+    Most-recent-first, case-insensitive dedup (latest casing wins), blanks
+    and nulls dropped. Frontend fills <datalist> options from these.
+    """
+    rows = (
+        db.query(SalesChallan.transporter, SalesChallan.vehicle_no, SalesChallan.challan_date)
+        .filter(
+            SalesChallan.is_archived == False,  # noqa: E712
+            SalesChallan.challan_date.isnot(None),
+        )
+        .order_by(SalesChallan.challan_date.desc(), SalesChallan.id.desc())
+        .all()
+    )
+    transporters, vehicles = [], []
+    seen_t, seen_v = set(), set()
+    for transporter, vehicle, _date in rows:
+        if transporter and isinstance(transporter, str):
+            key = transporter.strip().lower()
+            if key and key not in seen_t:
+                seen_t.add(key)
+                transporters.append(transporter.strip())
+        if vehicle and isinstance(vehicle, str):
+            key = vehicle.strip().lower()
+            if key and key not in seen_v:
+                seen_v.add(key)
+                vehicles.append(vehicle.strip())
+    return {"transporters": transporters, "vehicles": vehicles}
 
 
+# Challan routes
 @router.get("/challans", response_model=list[SalesChallanSchema])
 def list_challans(request: Request = None, db: Session = Depends(get_db)):
     from backend.app.core.shared import _challan_entry_allowed, _latest_login_at
@@ -745,6 +756,53 @@ def create_customer_payment(payload: dict, request: Request, db: Session = Depen
     db.commit()
     db.refresh(pay)
     return {"amount": float(pay.amount), "id": pay.id, "challan_id": pay.challan_id, "payment_date": pay.payment_date.isoformat() if pay.payment_date else None, "payment_mode": pay.payment_mode}
+
+
+@router.put("/customer-payments/{payment_id}")
+def update_payment(payment_id: int, payload: dict, request: Request, db: Session = Depends(get_db)):
+    """Edit a customer payment; change note required."""
+    pay = db.query(CustomerPayment).filter(CustomerPayment.id == payment_id).first()
+    if not pay:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    reason = _change_reason(request, payload)
+    old_amount = pay.amount
+    if "amount" in payload and payload["amount"] is not None:
+        pay.amount = D(str(payload["amount"]))
+    if "payment_mode" in payload and payload["payment_mode"] is not None:
+        pay.payment_mode = payload["payment_mode"]
+    if "notes" in payload:
+        pay.notes = payload["notes"]
+    # Recompute challan outstanding/paid from the delta
+    ch = db.query(SalesChallan).filter(SalesChallan.id == pay.challan_id).first()
+    if ch:
+        delta = pay.amount - old_amount
+        ch.outstanding_amount = max(D("0"), (ch.outstanding_amount or D("0")) + delta)
+        ch.paid_amount = max(D("0"), (ch.paid_amount or D("0")) - delta)
+        if ch.outstanding_amount == D("0"):
+            ch.status = ChallanStatus.PAID
+        elif ch.outstanding_amount < ch.total_price:
+            ch.status = ChallanStatus.PARTIALLY_PAID
+        else:
+            ch.status = ChallanStatus.CONFIRMED
+    _audit(db, request, "sales", "update", record=pay, record_type="customer_payment",
+           old_values={"amount": float(old_amount)}, new_values={"amount": float(pay.amount)}, notes=reason)
+    db.commit()
+    db.refresh(pay)
+    return {"amount": float(pay.amount), "id": pay.id, "challan_id": pay.challan_id, "payment_date": pay.payment_date.isoformat() if pay.payment_date else None, "payment_mode": pay.payment_mode}
+
+
+@router.delete("/customer-payments/{payment_id}")
+def delete_payment(payment_id: int, request: Request, db: Session = Depends(get_db)):
+    """Archive (soft-delete) a customer payment; change note required."""
+    pay = db.query(CustomerPayment).filter(CustomerPayment.id == payment_id).first()
+    if not pay:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    reason = _change_reason(request)
+    pay.is_archived = True
+    _audit(db, request, "sales", "archive", record=pay, record_type="customer_payment",
+           old_values={"is_archived": False}, new_values={"is_archived": True}, notes=reason)
+    db.commit()
+    return {"status": "archived", "id": payment_id}
 
 
 # Finished stock

@@ -1,5 +1,6 @@
 """Raw material routes"""
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
@@ -29,10 +30,11 @@ def create_raw_material(material: RawMaterialCreate, request: Request, db: Sessi
     if exists:
         raise HTTPException(status_code=400, detail="Raw material with this name already exists")
     m = RawMaterial(
+        material_id=material.material_id,
         name=material.name,
         category_id=material.category_id,
         unit=material.unit,
-        current_stock=material.current_stock or 0,
+        current_stock=material.opening_stock or 0,
         threshold_stock=material.threshold_stock or 0,
         watch_stock=material.watch_stock if material.watch_stock is not None else True,
         hsn_code=material.hsn_code,
@@ -104,11 +106,16 @@ def list_raw_material_categories(db: Session = Depends(get_db)):
 
 @router.post("/raw-material-categories")
 def create_raw_material_category(payload: dict, request: Request, db: Session = Depends(get_db)):
+    if not isinstance(payload, dict):
+        payload = payload.dict(exclude_unset=True)
     name = (payload or {}).get("name")
-    if not name:
+    if not name or not str(name).strip():
         raise HTTPException(status_code=400, detail="name required")
-    if db.query(RawMaterialCategory).filter(RawMaterialCategory.name == name).first():
-        raise HTTPException(status_code=400, detail="Category already exists")
+    name = str(name).strip()
+    if db.query(RawMaterialCategory).filter(
+        func.lower(RawMaterialCategory.name) == name.lower()
+    ).first():
+        raise HTTPException(status_code=409, detail="Category already exists")
     cat = RawMaterialCategory(name=name)
     db.add(cat)
     _audit(db, request, "raw_materials", "category_create", record=cat, record_type="raw_material_category", new_values={"name": name})

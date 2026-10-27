@@ -795,3 +795,43 @@ def dues_followup(db: Session = Depends(get_db)):
 
     result.sort(key=lambda r: r["max_age_days"], reverse=True)
     return result
+
+
+# Daily report sections for the morning mail / scheduled report.
+REPORT_SECTION_CHOICES = ["dues", "stock", "production", "purchases", "expenses"]
+
+
+def _build_daily_report(db, sections):
+    """Build a daily report email: (subject, plain-text body, HTML body).
+
+    Only the sections listed in `sections` are included. Each section's
+    rows are rendered once; a section with no rows says so explicitly.
+    """
+    sections = set(sections or [])
+    subject = "Daily Report — Shresth Masala Industry"
+    lines = [f"{subject}", ""]
+    html = [f"<h2>{subject}</h2>"]
+
+    if "dues" in sections:
+        dues_rows = dues_followup(db)
+        if dues_rows:
+            lines.append("Dues follow-up (oldest due first):")
+            html.append("<h3>Dues follow-up</h3><ul>")
+            for d in dues_rows:
+                name = d["customer_name"]
+                amount = d["total_outstanding"]
+                days = d["max_age_days"]
+                lines.append(f"  {name}: ₹{amount:.2f} — {days} days waiting")
+                html.append(f"<li>{name}: ₹{amount:.2f} — {days} days waiting</li>")
+            html.append("</ul>")
+        else:
+            lines.append("Dues follow-up: nothing overdue.")
+            html.append("<p>Dues follow-up: nothing overdue.</p>")
+
+    if len(lines) <= 2:
+        lines.append("Nothing to report.")
+        html.append("<p>Nothing to report.</p>")
+
+    text = "\n".join(lines)
+    html_body = "\n".join(html)
+    return subject, text, html_body

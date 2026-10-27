@@ -337,7 +337,10 @@ archive_production = production.archive_production_entry
 create_product = products.create_product
 update_packaging_size = products.update_packaging_size
 create_raw_material_category = raw_materials.create_raw_material_category
+create_raw_material = raw_materials.create_raw_material
+get_raw_material = raw_materials.get_raw_material
 list_raw_material_categories = raw_materials.list_raw_material_categories
+list_raw_materials = raw_materials.list_raw_materials
 list_expenses = reports.list_expenses
 list_purchase_invoices = purchase.list_purchase_invoices
 get_session_settings = settings_routes.get_session_settings
@@ -349,7 +352,12 @@ payroll_run = employees.run_payroll
 # Sales route aliases
 create_sales_invoice = sales.create_sales_invoice
 create_customer_payment = sales.create_customer_payment
+update_payment = sales.update_payment
+delete_payment = sales.delete_payment
 list_sales_invoices = sales.list_sales_invoices
+list_invoices = sales.list_sales_invoices
+challan_dispatch_options = sales.challan_dispatch_options
+stock_adjustment_reasons = sales.stock_adjustment_reasons
 search_all = sales.search_all
 
 # Backup test-facing aliases
@@ -389,6 +397,7 @@ set_product_help = products.update_product_help
 customer_statement = customers.customer_statement
 set_editor_mode = auth.set_editor_mode
 list_import_reports = import_export.import_reports
+import_undo_status = import_export.import_undo_status
 
 # Reports route aliases
 sales_trend = reports.sales_trend
@@ -410,6 +419,8 @@ list_expense_categories = reports.list_expense_categories
 expense_history = reports.expense_history
 create_expense = reports.create_expense
 dues_followup = reports.dues_followup
+_build_daily_report = reports._build_daily_report
+REPORT_SECTION_CHOICES = reports.REPORT_SECTION_CHOICES
 
 # Settings route aliases
 get_backup_settings = settings_routes.get_backup_settings

@@ -51,7 +51,14 @@ def customer_statement(customer_id: int, db: Session = Depends(get_db)):
     if not c:
         raise HTTPException(status_code=404, detail="Customer not found")
     challans = db.query(SalesChallan).filter(SalesChallan.customer_id == customer_id, SalesChallan.is_archived == False).all()  # noqa: E712
-    payments = db.query(CustomerPayment).filter(CustomerPayment.customer_id == customer_id).all()
+    # CustomerPayment has no customer_id column; it links via challan_id, so
+    # join through SalesChallan to find payments for this customer's challans.
+    payments = (
+        db.query(CustomerPayment)
+        .join(SalesChallan, CustomerPayment.challan_id == SalesChallan.id)
+        .filter(SalesChallan.customer_id == customer_id, SalesChallan.is_archived == False)
+        .all()
+    )
     from backend.app.services import challan_snapshot as _snap
     balances = _snap.all_challan_balances(db)
     items = []

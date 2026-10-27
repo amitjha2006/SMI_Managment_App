@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from backend.app.core.database import get_db
+from backend.app.core.database import get_db, _ist_wall
 from backend.app.models import Customer, CustomerPayment, SalesChallan
 from backend.app.schemas import CustomerCreate, CustomerSchema, CustomerUpdate
 from backend.app.core.shared import (
@@ -50,40 +50,53 @@ def customer_statement(customer_id: int, db: Session = Depends(get_db)):
     c = db.query(Customer).filter(Customer.id == customer_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Customer not found")
-    challans = db.query(SalesChallan).filter(SalesChallan.customer_id == customer_id, SalesChallan.is_archived == False).all()  # noqa: E712
-    # CustomerPayment has no customer_id column; it links via challan_id, so
-    # join through SalesChallan to find payments for this customer's challans.
-    payments = (
-        db.query(CustomerPayment)
-        .join(SalesChallan, CustomerPayment.challan_id == SalesChallan.id)
-        .filter(SalesChallan.customer_id == customer_id, SalesChallan.is_archived == False)
+    # Non-archived, non-draft challans only (drafts are not open dues).
+    challans = (
+        db.query(SalesChallan)
+        .filter(
+            SalesChallan.customer_id == customer_id,
+            SalesChallan.is_archived == False,  # noqa: E712
+            SalesChallan.status != "DRAFT",
+        )
         .all()
     )
     from backend.app.services import challan_snapshot as _snap
     balances = _snap.all_challan_balances(db)
-    items = []
+    now = _ist_wall()
+    challan_rows = []
+    d30 = d60 = over60 = 0
+    total_outstanding = 0.0
     for ch in challans:
         bal = balances.get(ch.id, 0)
-        items.append({
-            "type": "challan",
+        if bal <= 0:
+            continue
+        outstanding = float(bal)
+        total_outstanding += outstanding
+        cd = ch.challan_date
+        cd_date = cd.date() if hasattr(cd, "date") else cd
+        age_days = (now.date() - cd_date).days if cd_date else 0
+        if age_days > 60:
+            over60 += 1
+        elif age_days > 30:
+            d60 += 1
+        else:
+            d30 += 1
+        challan_rows.append({
             "id": ch.id,
-            "date": ch.challan_date.isoformat() if ch.challan_date else None,
             "challan_number": ch.challan_number,
+            "date": cd.isoformat() if cd else None,
+            "age_days": age_days,
+            "outstanding": outstanding,
             "total_amount": float(ch.total_price or 0),
-            "balance": float(bal),
         })
-    for p in payments:
-        items.append({
-            "type": "payment",
-            "id": p.id,
-            "date": p.payment_date.isoformat() if p.payment_date else None,
-            "challan_id": p.challan_id,
-            "amount": float(p.amount or 0),
-            "mode": p.payment_mode,
-        })
-    items.sort(key=lambda x: x["date"] or "", reverse=True)
-    total_due = sum(i["balance"] for i in items if i["type"] == "challan" and i["balance"] > 0)
-    return {"customer": {"id": c.id, "name": c.name}, "items": items, "total_due": float(total_due)}
+    challan_rows.sort(key=lambda x: x["age_days"], reverse=True)
+    return {
+        "customer_name": c.name,
+        "contact_number": c.contact_number or "",
+        "challans": challan_rows,
+        "total_outstanding": total_outstanding,
+        "aging": {"d30": d30, "d60": d60, "over60": over60},
+    }
 
 
 @router.put("/customers/{customer_id}", response_model=CustomerSchema)

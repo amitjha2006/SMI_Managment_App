@@ -693,7 +693,7 @@ def list_expenses(
             "date": e.date.isoformat() if e.date else None,
             "created_at": e.created_at,
             "description": e.description,
-            "category_name": e.category.name if e.category else "",
+            "category_name": e.category if e.category else "",
             "category_id": e.category_id,
             "payee": e.payee,
             "payment_mode": e.payment_mode,
@@ -780,7 +780,7 @@ def create_expense(payload: dict, request: Request, db: Session = Depends(get_db
            new_values={"description": description, "amount": amount})
     db.commit()
     db.refresh(exp)
-    cat_name = exp.category.name if exp.category else "Miscellaneous"
+    cat_name = exp.category if exp.category else "Miscellaneous"
     return {"category_name": cat_name, "id": exp.id, "created_at": exp.created_at}
 
 

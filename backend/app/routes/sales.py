@@ -155,6 +155,109 @@ def get_challan(challan_id: int, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/challans/{challan_id}/invoice")
+def get_challan_invoice(challan_id: int, db: Session = Depends(get_db)):
+    """Get the sales invoice for a challan, if one exists."""
+    inv = db.query(SalesInvoice).filter(SalesInvoice.challan_id == challan_id).first()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return {
+        "id": inv.id,
+        "invoice_number": inv.invoice_number,
+        "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+        "challan_id": inv.challan_id,
+        "customer_id": inv.customer_id,
+        "grand_total": float(inv.grand_total or 0),
+        "paid_amount": float(inv.paid_amount or 0),
+        "outstanding_amount": float(inv.outstanding_amount or 0),
+        "status": inv.status,
+    }
+
+
+@router.post("/challans/{challan_id}/invoice")
+def create_invoice_from_challan(challan_id: int, request: Request, db: Session = Depends(get_db)):
+    """Create a sales invoice from a confirmed challan."""
+    ch = db.query(SalesChallan).filter(SalesChallan.id == challan_id).first()
+    if not ch:
+        raise HTTPException(status_code=404, detail="Challan not found")
+    if ch.status != ChallanStatus.CONFIRMED:
+        raise HTTPException(status_code=400, detail="Challan must be confirmed first")
+
+    # Check if invoice already exists
+    existing = db.query(SalesInvoice).filter(SalesInvoice.challan_id == challan_id).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Invoice already exists for this challan")
+
+    # Generate invoice number
+    from backend.app.services.document_sequence import next_sales_invoice_number
+    invoice_number = next_sales_invoice_number(db)
+
+    # Create invoice
+    inv = SalesInvoice(
+        invoice_number=invoice_number,
+        invoice_date=_ist_wall(),
+        challan_id=ch.id,
+        customer_id=ch.customer_id,
+        intra_state=True,
+        total_quantity=ch.total_weight,
+        total_weight=ch.total_weight,
+        taxable_value=ch.total_price,
+        total_tax=D("0"),
+        cgst=D("0"),
+        sgst=D("0"),
+        igst=D("0"),
+        grand_total=ch.total_price,
+    )
+    db.add(inv)
+    db.flush()
+
+    # Copy challan items to invoice items
+    for item in ch.items:
+        db.add(SalesInvoiceItem(
+            sales_invoice_id=inv.id,
+            product_id=item.product_id,
+            packaging_size_id=item.packaging_size_id,
+            quantity=item.quantity,
+            weight=item.weight,
+            rate_per_kg=item.rate_per_kg,
+            amount=item.amount,
+        ))
+
+    _audit(db, request, "sales", "invoice_create", record=inv, record_type="sales_invoice",
+           new_values={"invoice_number": invoice_number, "challan_id": ch.id})
+    db.commit()
+    db.refresh(inv)
+    return {
+        "id": inv.id,
+        "invoice_number": inv.invoice_number,
+        "challan_id": inv.challan_id,
+        "grand_total": float(inv.grand_total or 0),
+    }
+
+
+@router.get("/payments/challan/{challan_id}")
+def list_challan_payments(challan_id: int, db: Session = Depends(get_db)):
+    """List customer payments for a challan."""
+    payments = (
+        db.query(CustomerPayment)
+        .filter(CustomerPayment.challan_id == challan_id)
+        .order_by(CustomerPayment.id.desc())
+        .all()
+    )
+    return [
+        {
+            "id": p.id,
+            "challan_id": p.challan_id,
+            "amount": float(p.amount or 0),
+            "payment_mode": p.payment_mode or "",
+            "transaction_ref": p.transaction_ref or "",
+            "payment_date": p.payment_date.isoformat() if p.payment_date else None,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in payments
+    ],
+
+
 def _challan_payload(payload) -> dict:
     """Accept both a Pydantic payload and a plain dict from callers/tests."""
     if payload is None:

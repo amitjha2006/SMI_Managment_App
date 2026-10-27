@@ -104,6 +104,11 @@ def get_purchase_invoice(invoice_id: int, db: Session = Depends(get_db)):
                 "igst_amount": float(it.igst_amount or 0),
                 "transport_amount": float(it.transport_amount or 0),
                 "other_amount": float(it.other_amount or 0),
+                "total_cost_per_kg": float(
+                    (it.rate or 0)
+                    + ((it.transport_amount or 0) / (it.quantity or 1))
+                    + ((it.other_amount or 0) / (it.quantity or 1))
+                ),
             }
             for it in (inv.items or [])
         ],

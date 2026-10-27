@@ -150,7 +150,6 @@ def get_challan(challan_id: int, db: Session = Depends(get_db)):
                 "amount": float(it.amount or 0),
                 "product_name": it.product_name or "",
                 "size_name": it.size_name or "",
-                "hsn_code": it.hsn_code or "",
                 "sequence": it.sequence,
             }
             for it in (c.items or [])

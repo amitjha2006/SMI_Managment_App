@@ -209,7 +209,8 @@
     document.getElementById("cr-from").value = "";
     document.getElementById("cr-to").value = "";
     // Blank dates make the server fall back to the FY window, which is what
-    // "reset" should restore.
+    // "reset" should restore. Overwrite saved state so a reload stays clean.
+    saveReportFilters();
     runCustomReport();
   };
 
@@ -217,6 +218,7 @@
     document.getElementById("sysrep-from").value = "";
     document.getElementById("sysrep-to").value = "";
     document.getElementById("sysrep-entity").value = "";
+    saveReportFilters();
     runSysReport();
   };
 

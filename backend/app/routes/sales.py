@@ -29,6 +29,7 @@ from backend.app.core.shared import (
     _archive_record,
     _restore_record,
     _ist_wall,
+    _request_payload,
     _request_user_and_role,
 )
 from backend.app.services import challan_snapshot as _snap
@@ -368,6 +369,35 @@ def update_challan_status(challan_id: int, payload: dict, request: Request, db: 
     old_status = c.status
 
     if new_status == ChallanStatus.CONFIRMED and old_status != ChallanStatus.CONFIRMED:
+        # Credit limit enforcement: refuse confirmation when the new
+        # outstanding would exceed the customer's credit limit, unless the
+        # session is in Editor Mode (then allow and audit the override).
+        customer = (
+            db.query(Customer).filter(Customer.id == c.customer_id).first()
+            if c.customer_id else None
+        )
+        if customer:
+            credit_limit = customer.credit_limit or D("0")
+            if credit_limit > D("0"):
+                projected = (customer.outstanding_balance or D("0")) + c.total_price
+                if projected > credit_limit:
+                    excess = projected - credit_limit
+                    payload = _request_payload(request)
+                    if not (payload and payload.get("editor")):
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Credit limit exceeded by {excess:,.2f}",
+                        )
+                    _audit(
+                        db, request, "sales", "credit_limit_override",
+                        record=c, record_type="sales_challan",
+                        old_values={"credit_limit": str(credit_limit)},
+                        new_values={
+                            "projected_outstanding": str(projected),
+                            "credit_limit_override": str(excess),
+                        },
+                        notes=f"Credit limit overridden by {excess:,.2f}",
+                    )
         # Confirm: post stock movements and create receivable
         post_challan_sales_movements(db, c, c.items)
         c.confirmed_at = _ist_wall()
@@ -383,7 +413,7 @@ def update_challan_status(challan_id: int, payload: dict, request: Request, db: 
     _audit(db, request, "sales", "status_change", record=c, record_type="sales_challan", old_values={"status": old_status.value}, new_values={"status": new_status.value}, notes=reason)
     db.commit()
     db.refresh(c)
-    return c
+    return _challan_dict(c)
 
 
 # Challan reopen

@@ -38,7 +38,6 @@ from backend.app.models import (
     User,
 )
 from backend.app.models.finished_product import FinishedProductMovementType
-from backend.app.schemas import DashboardPreferenceSchema
 from backend.app.services import challan_snapshot as _snap
 
 router = APIRouter()
@@ -350,45 +349,73 @@ def production_today(db: Session = Depends(get_db)):
     ]
 
 
-@router.get("/api/dashboard/preferences", response_model=list[DashboardPreferenceSchema])
+@router.get("/api/dashboard/preferences", response_model=dict)
 def list_dashboard_preferences(request: Request, db: Session = Depends(get_db)):
     user, _ = _request_user_and_role(db, request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return (
+    pref = (
         db.query(DashboardPreference)
         .filter(DashboardPreference.user_id == user.id)
-        .order_by(DashboardPreference.page_key)
-        .all()
+        .first()
     )
+    if not pref:
+        return {
+            "show_sales": True, "show_production": True, "show_inventory": True,
+            "show_outstanding": True, "show_purchases": True, "show_expenses": True,
+            "show_employees": True, "show_recent_transactions": True,
+            "theme": "light",
+        }
+    return {
+        "show_sales": bool(pref.show_sales),
+        "show_production": bool(pref.show_production),
+        "show_inventory": bool(pref.show_inventory),
+        "show_outstanding": bool(pref.show_outstanding),
+        "show_purchases": bool(pref.show_purchases),
+        "show_expenses": bool(pref.show_expenses),
+        "show_employees": bool(pref.show_employees),
+        "show_recent_transactions": bool(pref.show_recent_transactions),
+        "theme": pref.theme or "light",
+    }
 
 
-@router.put("/api/dashboard/preferences", response_model=DashboardPreferenceSchema)
+@router.put("/api/dashboard/preferences", response_model=dict)
 def upsert_dashboard_preference(
     payload: dict, request: Request, db: Session = Depends(get_db)
 ):
     user, _ = _request_user_and_role(db, request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    page_key = (payload or {}).get("page_key")
-    config = (payload or {}).get("config")
-    if not page_key or config is None:
-        raise HTTPException(status_code=400, detail="page_key and config are required")
     pref = (
         db.query(DashboardPreference)
-        .filter(
-            DashboardPreference.user_id == user.id, DashboardPreference.page_key == page_key
-        )
+        .filter(DashboardPreference.user_id == user.id)
         .first()
     )
-    if pref:
-        pref.config_json = config
-    else:
-        pref = DashboardPreference(user_id=user.id, page_key=page_key, config_json=config)
+    if not pref:
+        pref = DashboardPreference(user_id=user.id)
         db.add(pref)
+    for key in (
+        "show_sales", "show_production", "show_inventory", "show_outstanding",
+        "show_purchases", "show_expenses", "show_employees",
+        "show_recent_transactions",
+    ):
+        if key in (payload or {}):
+            setattr(pref, key, bool(payload[key]))
+    if "theme" in (payload or {}):
+        pref.theme = payload["theme"]
     db.commit()
     db.refresh(pref)
-    return pref
+    return {
+        "show_sales": bool(pref.show_sales),
+        "show_production": bool(pref.show_production),
+        "show_inventory": bool(pref.show_inventory),
+        "show_outstanding": bool(pref.show_outstanding),
+        "show_purchases": bool(pref.show_purchases),
+        "show_expenses": bool(pref.show_expenses),
+        "show_employees": bool(pref.show_employees),
+        "show_recent_transactions": bool(pref.show_recent_transactions),
+        "theme": pref.theme or "light",
+    }
 
 
 @router.get("/notifications/recent")

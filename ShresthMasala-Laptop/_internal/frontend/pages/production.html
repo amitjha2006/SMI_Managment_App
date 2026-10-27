@@ -177,7 +177,7 @@
       status: (e.status || "—") +
         // Not yet packed = Part 1 done, Part 2 (packaging) pending.
         (e.packed_at == null && !e.is_archived
-          ? ' <span class="badge badge-warning">Unpacked</span>' : ""),
+          ? ' <span class="badge badge-unpacked">Unpacked</span>' : ""),
       actions: `<span class="row-actions"><button class="btn btn-sm btn-info" onclick="viewProduction(${e.id})">View</button>` +
         (e.packed_at == null && !e.is_archived
           ? `<button class="btn btn-sm btn-primary" data-approve onclick="openPackDialog(${e.id})">Pack</button>`
@@ -947,13 +947,13 @@ window.cancelQuickAddProduct = function (silent) {
       html += `<button class="btn btn-sm btn-danger" data-approve onclick="setProductionStatus(${d.id}, 'cancelled')">Cancel Entry</button>`;
     }
     if (st === "completed") {
-      html += `<span class="badge badge-success">Completed</span>`;
+      html += `<span class="badge badge-completed">Completed</span>`;
     }
     if (st === "cancelled") {
       // Cancelling is reversible: the stock this batch posted and the raw
       // material it used stay in the ledger either way, so reopening only
       // clears the label.
-      html += `<span class="badge badge-danger">Cancelled</span>`;
+      html += `<span class="badge badge-cancelled">Cancelled</span>`;
       html += `<button class="btn btn-sm btn-secondary" data-approve onclick="setProductionStatus(${d.id}, 'draft')">Reopen as draft</button>`;
     }
     // Stage rows are process records: editable for any live batch (grinding,

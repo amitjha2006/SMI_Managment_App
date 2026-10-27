@@ -357,6 +357,7 @@ _backup_dir = backup_routes._backup_dir
 
 # Sales challan status alias (test uses set_challan_status)
 set_challan_status = sales.update_challan_status
+list_challans = sales.list_challans
 reopen_challan = sales.reopen_challan
 delete_challan_permanently = sales.delete_challan_permanently
 create_payment = sales.create_customer_payment
@@ -384,6 +385,8 @@ size_rate_history = products.size_rate_history
 delete_packaging_size = products.delete_packaging_size
 set_product_help = products.update_product_help
 customer_statement = customers.customer_statement
+set_editor_mode = auth.set_editor_mode
+list_import_reports = import_export.import_reports
 
 # Reports route aliases
 sales_trend = reports.sales_trend

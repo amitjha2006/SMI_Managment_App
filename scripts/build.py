@@ -114,7 +114,7 @@ def update_cache_buster(root: Path, dist_path: Path) -> None:
     # Match: components.js?v=N or components.js?v=14 etc.
     new_html = re.sub(
         r'(components\.js\?v=)[^"\']+',
-        rf'\1{file_hash}',
+        rf'\g<1>{file_hash}',
         html
     )
     if new_html != html:

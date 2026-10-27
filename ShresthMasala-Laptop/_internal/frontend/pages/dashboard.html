@@ -686,6 +686,12 @@ function isLowSpec() {
 }
 
 async function loadSnapCustomize() {
+  /* esc() is defined inside the page IIFE (which closed above), so this
+     top-level function can't reach it — define a local escaper to avoid a
+     ReferenceError that aborts the snapshot customize render. */
+  const esc = (s) => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
   const box = document.getElementById("snap-raw-list");
   if (!box) return;
   const prefs = loadSnapPrefs();
@@ -1035,7 +1041,7 @@ async function loadInventorySnapshot() {
       ? `<div class="table-wrap"><table><thead><tr><th>Raw Material</th><th>Stock</th><th>Status</th></tr></thead><tbody>` +
         shown.map(m =>
           `<tr><td><a href="#/raw-materials" style="color:inherit;" title="Open inventory">${m.name || ""}</a>` +
-          `${m.watch_stock !== false && (parseFloat(m.current_stock) || 0) <= (parseFloat(m.threshold_stock) || 0) ? ' <span class="badge badge-danger">low</span>' : ""}</td>` +
+          `${m.watch_stock !== false && (parseFloat(m.current_stock) || 0) <= (parseFloat(m.threshold_stock) || 0) ? ' <span class="badge badge-cancelled">low</span>' : ""}</td>` +
           `<td>${window.UI.figBox(fmtQty(m), m.current_stock)}</td><td>${statusOf(m)}</td></tr>`).join("") +
         `</tbody></table></div>`
       : "<p style='color:var(--color-text-muted);'>No materials yet.</p>";

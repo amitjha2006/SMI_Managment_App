@@ -20,7 +20,7 @@
 
   function statusBadge(st) {
     const s = String(st || "");
-    const cls = s === "auth-failed" ? "badge-danger" : (s === "client-error" ? "badge-warning" : "badge-success");
+    const cls = s === "auth-failed" ? "badge-cancelled" : (s === "client-error" ? "badge-warning" : "badge-confirmed");
     return `<span class="badge ${cls}">${esc(s.replace(/_/g, " ") || "—")}</span>`;
   }
 

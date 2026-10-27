@@ -115,7 +115,7 @@
       const locked = !!info.locked;
       const boxId = "perm-" + p.name.replace(/[^a-z0-9]/gi, "-");
       const mark = isOverride
-        ? '<span class="badge badge-warning" style="margin-left:6px;">changed</span>' : "";
+        ? '<span class="badge badge-dispatched" style="margin-left:6px;">changed</span>' : "";
       return {
         _archived: false,
         permission: `<label for="${boxId}" style="display:flex; align-items:center; gap:8px; cursor:${locked ? "not-allowed" : "pointer"};">

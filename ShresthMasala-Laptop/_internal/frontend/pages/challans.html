@@ -354,6 +354,19 @@
 
   function renderChallanTable(list) {
     const archBadge = '<span class="badge badge-archived">Archived</span> ';
+    // Status badge mapping
+    function statusBadge(status) {
+      const s = String(status || "").toLowerCase();
+      if (s === "draft") return '<span class="badge badge-draft">Draft</span>';
+      if (s === "confirmed") return '<span class="badge badge-confirmed">Confirmed</span>';
+      if (s === "dispatched") return '<span class="badge badge-dispatched">Dispatched</span>';
+      if (s === "delivered") return '<span class="badge badge-delivered">Delivered</span>';
+      if (s === "cancelled") return '<span class="badge badge-cancelled">Cancelled</span>';
+      if (s === "partially_paid") return '<span class="badge badge-partially_paid">Partially Paid</span>';
+      if (s === "paid") return '<span class="badge badge-paid">Paid</span>';
+      if (s === "closed") return '<span class="badge badge-closed">Closed</span>';
+      return '<span class="badge badge-draft">' + s + '</span>';
+    }
     const limited = isChallanEntry();
     const rows = (list || []).map(c => ({
       _archived: !!c.is_archived,
@@ -361,7 +374,7 @@
       date: window.UI.dateWithTime(c.challan_date, c.created_at),
       dateKey: window.UI.tsKey(c.challan_date, c.created_at),
       customer: c.customer_name || c.customer_id,
-      status: c.status,
+      status: statusBadge(c.status),
       delivery: c.delivered_at ? "Delivered" : (c.dispatched_at ? "Dispatched" : "—"),
       amount: window.UI.money(c.total_price),
       paid: limited ? "—" : window.UI.money(c.paid_amount),
@@ -1144,7 +1157,7 @@
     if (["draft", "confirmed", "partially_paid", "paid"].includes(st)) {
       html += `<button class="btn btn-sm btn-restore" data-approve onclick="setChallanStatus(${d.id}, 'closed')" title="Mark this challan as closed (no further changes)">Close Challan</button>`;
     }
-    if (st === "closed") html += `<span class="badge badge-success">Closed</span> <button class="btn btn-sm btn-restore" data-approve onclick="reopenChallan(${d.id})" title="Reopen this challan (undo the close)">Reopen</button>`;
+    if (st === "closed") html += `<span class="badge badge-closed">Closed</span> <button class="btn btn-sm btn-restore" data-approve onclick="reopenChallan(${d.id})" title="Reopen this challan (undo the close)">Reopen</button>`;
     html += ` <button class="btn btn-sm btn-export" onclick="printChallan(${d.id})" title="Print an A4 delivery challan">Print Challan</button>`;
     // A sales invoice is a separate tax document raised FROM this challan.
     // Which of the two buttons to show depends on whether one already exists,

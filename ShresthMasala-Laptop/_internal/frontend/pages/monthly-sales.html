@@ -176,6 +176,7 @@
   };
 
   function cellVal(cell) {
+    if (!cell) return 0;
     return pivotView === "amount" ? cell.amount : cell.weight;
   }
 

@@ -392,20 +392,13 @@ def get_product_workflow(product_id: int, db: Session = Depends(get_db)):
     p = db.query(Product).filter(Product.id == product_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
-    steps = db.query(ProductFormulationStep).filter(ProductFormulationStep.product_id == product_id).order_by(ProductFormulationStep.step_order).all()
+    steps = db.query(ProductFormulationStep).filter(ProductFormulationStep.product_id == product_id).order_by(ProductFormulationStep.sequence).all()
     return {
         "product_id": product_id,
         "product_name": p.name,
-        "steps": [
-            {
-                "id": s.id,
-                "step_order": s.step_order,
-                "name": s.name,
-                "output_weight_kg": float(s.output_weight_kg or 0),
-                "expected_yield_percent": float(s.expected_yield_percent or 0),
-            }
-            for s in steps
-        ],
+        "stages": [s.stage or f"Step {s.sequence}" for s in steps],
+        "available_stages": ["roasting", "grinding", "mixing", "packaging"],
+        "is_default": len(steps) == 0,
     }
 
 
@@ -415,22 +408,25 @@ def update_product_workflow(product_id: int, payload: dict, request: Request, db
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
     _reject_if_archived(p, "product")
-    steps_data = (payload or {}).get("steps") or []
+    stages_data = (payload or {}).get("stages") or []
+    if not isinstance(stages_data, list) or not stages_data:
+        raise HTTPException(status_code=400, detail="stages required (at least one)")
     # Delete existing steps
     db.query(ProductFormulationStep).filter(ProductFormulationStep.product_id == product_id).delete()
-    # Add new steps
-    for idx, step in enumerate(steps_data):
+    # Add new steps in the order sent by the editor
+    for idx, name in enumerate(stages_data):
+        if not isinstance(name, str) or not name.strip():
+            raise HTTPException(status_code=400, detail=f"stage {idx + 1} must be a non-empty name")
         s = ProductFormulationStep(
             product_id=product_id,
-            step_order=step.get("step_order", idx + 1),
-            name=step.get("name", f"Step {idx + 1}"),
-            output_weight_kg=step.get("output_weight_kg"),
-            expected_yield_percent=step.get("expected_yield_percent"),
+            stage=name.strip(),
+            sequence=idx + 1,
+            instruction="",
         )
         db.add(s)
-    _audit(db, request, "products", "workflow_update", record=p, record_type="product", new_values={"step_count": len(steps_data)})
+    _audit(db, request, "products", "workflow_update", record=p, record_type="product", new_values={"step_count": len(stages_data)})
     db.commit()
-    return {"status": "saved", "product_id": product_id, "step_count": len(steps_data)}
+    return {"status": "saved", "product_id": product_id, "step_count": len(stages_data)}
 
 
 # Product formulation

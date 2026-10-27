@@ -43,10 +43,13 @@ def import_types():
 
 
 @router.get("/import/reports")
-def import_reports(db: Session = Depends(get_db)):
+def import_reports(db: Session = Depends(get_db), limit: int | None = None):
     """List all import reports."""
     from backend.app.models import ImportReport
-    return db.query(ImportReport).order_by(ImportReport.id.desc()).all()
+    q = db.query(ImportReport).order_by(ImportReport.id.desc())
+    if limit is not None:
+        q = q.limit(limit)
+    return q.all()
 
 
 @router.get("/import/undo-status")

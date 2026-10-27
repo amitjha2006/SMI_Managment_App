@@ -2,26 +2,56 @@
  * Reusable frontend components / helpers
  */
 window.UI = (function () {
-  // Notification system. Errors linger longer (8s vs 3.5s) so a failure
-  // reason down in the corner can actually be read before it fades.
-  function notify(message, type = "info", duration) {
+  // Notification system - enhanced with actions and auto-dismiss
+  function notify(message, type = "info", duration, actions) {
     if (duration == null) duration = type === "error" ? 8000 : 3500;
     const container = document.getElementById("toast-container");
     if (!container) return;
     const el = document.createElement("div");
     el.className = `toast ${type}`;
-    el.textContent = message;
+    const iconMap = { success: "OK", error: "X", warning: "!", info: "i" };
+    el.innerHTML = `
+      <span class="toast-icon" aria-hidden="true">${iconMap[type] || iconMap.info}</span>
+      <span class="toast-message">${message}</span>
+      <div class="toast-actions"></div>
+      <button class="toast-close" aria-label="Dismiss">&times;</button>
+    `;
+    const actionsEl = el.querySelector(".toast-actions");
+    if (Array.isArray(actions)) {
+      actions.forEach(a => {
+        const btn = document.createElement("button");
+        btn.className = `btn btn-sm ${a.class || "btn-secondary"}`;
+        btn.textContent = a.label;
+        btn.addEventListener("click", () => {
+          if (typeof a.onClick === "function") a.onClick();
+          el.remove();
+        });
+        actionsEl.appendChild(btn);
+      });
+    }
+    el.querySelector(".toast-close").addEventListener("click", () => el.remove());
     container.appendChild(el);
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       el.style.transition = "opacity 0.3s, transform 0.3s";
       el.style.opacity = "0";
       el.style.transform = "translateY(10px)";
       setTimeout(() => el.remove(), 350);
     }, duration);
+    // Pause on hover
+    el.addEventListener("mouseenter", () => clearTimeout(timer));
+    el.addEventListener("mouseleave", () => {
+      clearTimeout(timer);
+      const remaining = duration; // simplified
+      setTimeout(() => {
+        el.style.transition = "opacity 0.3s, transform 0.3s";
+        el.style.opacity = "0";
+        el.style.transform = "translateY(10px)";
+        setTimeout(() => el.remove(), 350);
+      }, Math.min(remaining, 3500));
+    });
   }
 
   // Turn any API error payload into a readable message.
-  // FastAPI validation errors come as detail:[{loc,msg}] — prettify those.
   function formatError(data, fallback) {
     const d = data && data.detail !== undefined ? data.detail : data;
     if (d === undefined || d === null || d === "") {
@@ -49,9 +79,6 @@ window.UI = (function () {
     const url = path.startsWith("http") ? path : path;
     const auth = (window.Auth && window.Auth.authHeaders) ? window.Auth.authHeaders() : {};
     const options = { ...opts };
-    // fetch() stringifies a plain-object body to "[object Object]", which
-    // FastAPI rejects with 422. Encode it here so callers can pass an object.
-    // Strings and binary bodies (FormData, Blob, URLSearchParams) pass through.
     const b = options.body;
     const isBinary = (typeof FormData !== "undefined" && b instanceof FormData)
       || (typeof Blob !== "undefined" && b instanceof Blob)
@@ -61,17 +88,6 @@ window.UI = (function () {
     if (b && typeof b === "object" && !isBinary) {
       options.body = JSON.stringify(b);
     }
-    /* Never let a read come from the HTTP cache.
-
-       The server sends no Cache-Control on API responses, so the WebView is
-       free to reuse a stored response. That made auto-refresh re-request the
-       dashboard every 60 seconds and still render the previous numbers, which
-       is indistinguishable from auto-refresh not working at all. A manual
-       Refresh looked no different, because the cache did not distinguish the
-       two requests either.
-
-       Applied to reads only; writes are not cacheable anyway. A caller that
-       genuinely wants the default can still pass cache: "default". */
     const method = (options.method || "GET").toUpperCase();
     const cache = options.cache
       || ((method === "GET" || method === "HEAD") ? "no-store" : undefined);
@@ -108,9 +124,7 @@ window.UI = (function () {
     return d.getFullYear() + "-" + m + "-" + day;
   }
 
-  // Date-range preset for the "Current FY only" checkbox: from the FY start,
-  // no upper bound. Setting only `from` left a stale `to` from the previous FY,
-  // so from > to filtered every row out and the checkbox looked broken.
+  // Date-range preset for the "Current FY only" checkbox.
   function applyFyStart(fromId, toId) {
     const from = document.getElementById(fromId);
     if (!from) return;
@@ -140,8 +154,6 @@ window.UI = (function () {
   }
 
   // Prefill a list search box from a ?search= deep link (global search).
-  // Returns the term or "". Pages call it before their initial load; the
-  // existing filter paths then open already filtered.
   function applySearchDeepLink(boxId) {
     const m = (window.location.hash || "").match(/[?&]search=([^&]*)/);
     if (!m) return "";
@@ -153,10 +165,6 @@ window.UI = (function () {
   }
 
   // Business date with the small created-time beneath, always India time.
-  // The server stores naive UTC datetimes, so an offset-less value is UTC,
-  // not local: parsing it directly would pin it to the machine clock and the
-  // IST conversion would double-shift the hour. Usage:
-  //   dateWithTime(c.challan_date, c.created_at)
   const IST_ZONE = "Asia/Kolkata";
   function asUtcDate(v) {
     // IST-native parsing (IST-everywhere rule): stored values are naive IST
@@ -169,21 +177,17 @@ window.UI = (function () {
     if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s);
     return new Date(s + "+05:30");
   }
-  // One date shape for the whole system: "05-Mar-2026". A day-first
-  // numeric form (05/06/2026) can still be misread across locales; a short
-  // month name cannot. Pinned to en-IN parts with dashes normalized, so
-  // every browser emits the identical string. Accepts raw server values
-  // (parsed IST-native) or a Date; never parse display text back.
+  // One date shape for the whole system: "05-Mar-2026".
   function fmtDay(v) {
     const d = v instanceof Date ? v : asUtcDate(v);
-    if (!d || isNaN(d.getTime())) return "—";
+    if (!d || isNaN(d.getTime())) return "--";
     return d.toLocaleDateString("en-IN", {
       timeZone: IST_ZONE, day: "2-digit", month: "short", year: "numeric",
     }).replace(/ /g, "-");
   }
   function dateWithTime(dateIso, createdIso) {
     const d = asUtcDate(dateIso);
-    if (!d || isNaN(d.getTime())) return "—";
+    if (!d || isNaN(d.getTime())) return "--";
     const day = fmtDay(d);
     const c = asUtcDate(createdIso);
     if (!c || isNaN(c.getTime())) return day;
@@ -194,15 +198,13 @@ window.UI = (function () {
   }
   // Plain-text sibling of dateWithTime for messages and other non-HTML
   // targets (WhatsApp text, titles, clipboard): same IST instant, no tags.
-  // "2026-10-04T19:00:00" -> "04-Oct-2026, 7:00 PM IST".
   function dateTimeText(v) {
     const d = asUtcDate(v);
-    if (!d || isNaN(d.getTime())) return "—";
+    if (!d || isNaN(d.getTime())) return "--";
     const day = fmtDay(d);
     const time = d.toLocaleTimeString(undefined, {
       timeZone: IST_ZONE, hour: "numeric", minute: "2-digit", hour12: true,
     }).toUpperCase();
-    // Hide time if it's midnight (00:00:00)
     if (d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0) {
       return day;
     }
@@ -211,9 +213,8 @@ window.UI = (function () {
   // Format date for reports - returns only date if time is midnight, otherwise date + time
   function fmtDateTime(v) {
     const d = asUtcDate(v);
-    if (!d || isNaN(d.getTime())) return "—";
+    if (!d || isNaN(d.getTime())) return "--";
     const day = fmtDay(d);
-    // Hide time if it's midnight (00:00:00)
     if (d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0) {
       return day;
     }
@@ -222,7 +223,8 @@ window.UI = (function () {
     }).toUpperCase();
     return `${day}, ${time} IST`;
   }
-  // Authenticated file download (plain links carry no token).
+
+  // Authenticated file download
   async function download(url, filename) {
     const auth = (window.Auth && window.Auth.authHeaders) ? window.Auth.authHeaders() : {};
     const res = await fetch(url, { headers: auth });
@@ -232,11 +234,8 @@ window.UI = (function () {
     }
     await downloadBlob(await res.blob(), filename);
   }
-  // Save an already-built Blob (e.g. client-generated CSV): same playback
-  // path as download(), minus the fetch.
+  // Save an already-built Blob
   async function downloadBlob(blob, filename) {
-    // Desktop (pywebview/WebView2) ignores blob-URL anchor downloads, so
-    // hand the bytes to the Python save dialog when the bridge exists.
     try {
       const bridge = window.pywebview && window.pywebview.api && window.pywebview.api.save_file;
       if (bridge) {
@@ -253,8 +252,6 @@ window.UI = (function () {
         throw new Error((result && result.error) || "Save cancelled");
       }
     } catch (bridgeErr) {
-      // User-cancelled saves are not errors; anything else falls through
-      // to the browser anchor below so dev-server use keeps working.
       if (bridgeErr && bridgeErr.message === "Save cancelled") return;
       if (window.pywebview && window.pywebview.api && window.pywebview.api.save_file) {
         throw bridgeErr instanceof Error ? bridgeErr : new Error(String(bridgeErr));
@@ -267,8 +264,8 @@ window.UI = (function () {
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
-  // Copy text to the clipboard, with a legacy fallback for hosts where the
-  // async clipboard API is unavailable or refuses.
+
+  // Copy text to the clipboard
   async function copyText(t) {
     const text = String(t == null ? "" : t);
     if (!text) return false;
@@ -289,9 +286,8 @@ window.UI = (function () {
       } catch (e2) { return false; }
     }
   }
-  // Parse a pack-size name into kilograms: "100g" -> 0.1, "1 kg" -> 1,
-  // "1.5kg" -> 1.5. Tolerates spaces, comma decimals and case; returns null
-  // when there is no parseable weight ("Loose", "Family Pack", "").
+
+  // Parse a pack-size name into kilograms
   function parseSizeNameToKg(text) {
     const m = String(text == null ? "" : text).trim().replace(",", ".")
       .match(/^(\d+(?:\.\d+)?)\s*(kg|kgs|kilo|kilos|g|gm|gms|gram|grams)\.?$/i);
@@ -304,8 +300,7 @@ window.UI = (function () {
     return Math.round(kg * 1000000) / 1000000;
   }
 
-  // Canonical size name for a weight, used only as a suggestion:
-  // sub-kilo as grams ("100g"), 1 kg and up as kg ("1.5kg").
+  // Canonical size name for a weight
   function suggestSizeName(kg) {
     const n = parseFloat(kg) || 0;
     if (!(n > 0)) return "";
@@ -317,14 +312,7 @@ window.UI = (function () {
     return String(k).replace(/\.0+$/, "") + "kg";
   }
 
-  // Keep a size-name field and its weight field in sync, both directions,
-  // without ever fighting the user:
-  //   name -> weight only when weight is empty, still at its untouched
-  //     default, or still equals the last auto value (a hand-typed weight
-  //     is never overwritten);
-  //   weight -> name only when the name is empty or carries no parseable
-  //     weight (an informative name like "Family Pack" is never clobbered;
-  //     on conflict the typed weight wins - it is what the server bills on).
+  // Keep a size-name field and its weight field in sync
   function bindSizeWeightAuto(nameEl, weightEl) {
     if (!nameEl || !weightEl) return;
     if (nameEl.dataset.sizeweight === "1") return;
@@ -356,9 +344,7 @@ window.UI = (function () {
     });
   }
 
-  // Bulk loose is sold by the kg (1 unit = 1 kg). "Loose" has no parseable
-  // weight so bindSizeWeightAuto leaves the form default (0.05) in place,
-  // which then freezes onto the size. Pin it to 1 instead.
+  // Bulk loose is sold by the kg (1 unit = 1 kg)
   function fixLooseWeight(nameEl, weightEl) {
     if (!nameEl || !weightEl) return;
     if (nameEl.dataset.looseweight === "1") return;
@@ -371,8 +357,7 @@ window.UI = (function () {
     });
   }
 
-  // Reset a dragged dialog box so the next open re-centers it. Each open
-  // path calls this; freshly created nodes (confirms, audit detail) skip it.
+  // Reset a dragged dialog box
   function resetDraggable(box) {
     if (!box) return;
     box.style.position = "";
@@ -382,10 +367,7 @@ window.UI = (function () {
     box.style.zIndex = "";
   }
 
-  // Searchable combobox for long master lists (customers, suppliers,
-  // products, materials). Typing filters and shows a dropdown panel;
-  // picking syncs the underlying <select> (source of truth), so existing
-  // save/edit code reading select.value keeps working.
+  // Searchable combobox for long master lists
   function quickSelect(selectEl, placeholder) {
     if (!selectEl || selectEl.tagName !== "SELECT") return;
     if (selectEl.dataset.quickselect === "1" && selectEl._qs) {
@@ -401,7 +383,7 @@ window.UI = (function () {
     }
     const input = document.createElement("input");
     input.type = "search";
-    input.placeholder = placeholder || "Type to find…";
+    input.placeholder = placeholder || "Type to find...";
     input.className = "quickselect-search";
     input.setAttribute("aria-label", placeholder || "Type to find");
     input.setAttribute("autocomplete", "off");
@@ -409,12 +391,9 @@ window.UI = (function () {
     input.setAttribute("aria-expanded", "false");
     input.setAttribute("aria-autocomplete", "list");
     input.style.cssText = "flex:1; min-width:0; padding:6px 10px;border:1px solid var(--color-border);border-radius:6px;font-size:13px;";
-    // Explicit full-list toggle: focus/typing no longer auto-opens the
-    // whole master list over the form, but one click still shows everything
-    // on demand (filtered by whatever is typed, or all when empty).
     const toggle = document.createElement("button");
     toggle.type = "button";
-    toggle.textContent = "▾";
+    toggle.textContent = "v";
     toggle.title = "Show all options";
     toggle.setAttribute("aria-label", "Show all options");
     toggle.style.cssText = "flex:0 0 32px; padding:6px 0; border:1px solid var(--color-border); border-radius:6px; background:var(--color-surface-alt, #f5f8fc); font-size:13px; cursor:pointer;";
@@ -430,7 +409,6 @@ window.UI = (function () {
     panel.style.cssText = "display:none; position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--color-border); border-radius:6px; margin-top:2px; max-height:220px; overflow:auto; z-index:50; box-shadow:0 8px 24px rgba(0,0,0,0.12);";
     parent.insertBefore(panel, selectEl);
     selectEl.style.display = "none";
-    // Existing call sites focus the select (e.g. challan form). Redirect to input.
     try {
       const origFocus = selectEl.focus.bind(selectEl);
       selectEl.focus = () => input.focus();
@@ -458,32 +436,19 @@ window.UI = (function () {
       window.removeEventListener("scroll", onWindowScroll, true);
       window.removeEventListener("resize", onWindowResize);
     }
-    // A pinned panel would float away from its box if the form scrolled.
     function onWindowScroll(e) {
       if (!panel.contains(e.target)) hidePanel();
     }
     function onWindowResize() { hidePanel(); }
-    /* The panel is absolutely positioned inside the form group, so any
-       scrolling ancestor clips it. The purchase-invoice line items live in a
-       ~90px scroll box, which left one sliver of the material list visible.
-       Pin the panel to the viewport instead, and flip it above the box when
-       there is no room below. Called on every render, so typing keeps it in
-       place (the box moves as the list re-filters). */
     function placePanel() {
       const r = wrap.getBoundingClientRect();
       const roomBelow = window.innerHeight - r.bottom - 12;
       const roomAbove = r.top - 12;
       const maxWidth = Math.max(200, window.innerWidth - r.left - 12);
-      // Same (type, listener, capture) twice is a no-op, so re-placing on
-      // every keystroke cannot stack listeners.
       window.addEventListener("scroll", onWindowScroll, true);
       window.addEventListener("resize", onWindowResize);
       panel.style.position = "fixed";
       panel.style.right = "auto";
-      // The inline style that created the panel still says left:0; under
-      // position:fixed that is the window edge, not the field. Anchor it to
-      // the box, then pull it back on screen if a page's CSS min-width makes
-      // it wider than the space to its right.
       panel.style.left = r.left + "px";
       panel.style.marginTop = "0";
       panel.style.width = Math.min(Math.max(r.width, 280), maxWidth) + "px";
@@ -515,7 +480,7 @@ window.UI = (function () {
       panel.innerHTML = out.map((o, i) =>
         `<div role="option" data-idx="${i}" data-value="${escH(o.value)}" style="padding:8px 12px; font-size:13px; cursor:pointer;">${escH(o.text)}</div>`
       ).join("") + (real.length > 10
-        ? `<div style="padding:6px 12px; font-size:11px; color:var(--color-text-muted); border-top:1px solid var(--color-border); position:sticky; bottom:0; background:inherit;">${real.length} matches — keep typing to narrow</div>`
+        ? `<div style="padding:6px 12px; font-size:11px; color:var(--color-text-muted); border-top:1px solid var(--color-border); position:sticky; bottom:0; background:inherit;">${real.length} matches -- keep typing to narrow</div>`
         : "");
       panel.style.display = "block";
       placePanel();
@@ -544,8 +509,6 @@ window.UI = (function () {
     }
     function refresh() {
       syncFromSelect();
-      // Never auto-open: re-render only if the user already has the panel
-      // open (e.g. options reloaded mid-typing). Focus/clear keep it closed.
       if (panel.style.display === "block") render();
     }
 
@@ -557,35 +520,21 @@ window.UI = (function () {
           try { selectEl.dispatchEvent(new Event("change", { bubbles: true })); }
           catch (e) { selectEl.dispatchEvent(new Event("change")); }
         }
-        // Panel opens from typing, not from an empty box: clearing closes it
-        // instead of dumping the whole master list over the form.
         hidePanel();
         return;
       }
-      // No live auto-pick: replacing the typed query with the first unique
-      // match broke multi-letter filtering (first letter matched, the rest
-      // searched inside the auto-filled full name). The panel is the
-      // feedback; picking stays explicit (click/Enter, or exact text on blur).
       render();
     });
     input.addEventListener("focus", () => {
       syncFromSelect();
-      // Opening the form focuses this box programmatically — keep the panel
-      // closed until the user actually types.
       if (input.value.trim()) render();
       else hidePanel();
     });
-    // A click on an empty box is an explicit "show me the list" gesture:
-    // the full option panel drops down (typing then filters it). Plain
-    // focus() stays closed so programmatic focus never dumps a panel.
     input.addEventListener("click", () => {
       if (!input.value.trim()) render();
     });
     input.addEventListener("blur", () => {
       setTimeout(() => {
-        // Forgiving Tab-out: typed text that exactly equals one option
-        // (case-insensitive) counts as a pick, so a fully typed name + Tab
-        // still selects without forcing a click.
         try {
           if (!selectEl.value && input.value.trim()) {
             const want = input.value.trim().toLowerCase();
@@ -619,6 +568,8 @@ window.UI = (function () {
       } else if (e.key === "Escape") {
         hidePanel();
         input.blur();
+      } else if (e.key === "Tab") {
+        hidePanel();
       }
     });
     panel.addEventListener("mousedown", (e) => {
@@ -633,8 +584,6 @@ window.UI = (function () {
       Array.from(panel.children).forEach(r => { r.style.background = ""; });
       row.style.background = "#f5f8fc";
     });
-    // mousedown (not click): keeps input focus so the blur-hide timer does
-    // not close the panel before the toggle registers.
     toggle.addEventListener("mousedown", (e) => {
       e.preventDefault();
       if (panel.style.display === "block") { hidePanel(); return; }
@@ -642,8 +591,6 @@ window.UI = (function () {
       render();
     });
     selectEl.addEventListener("change", () => { syncFromSelect(); });
-    // Programmatic sets (edit flows assign select.value directly) must sync
-    // the visible input too, since no change event fires for those.
     try {
       const proto = Object.getPrototypeOf(selectEl);
       const desc = proto && Object.getOwnPropertyDescriptor(proto, "value");
@@ -678,14 +625,7 @@ window.UI = (function () {
     syncFromSelect();
   }
 
-  // Suggestion dropdown for free-text table search boxes (UI.searchSuggest).
-  // Same discovery experience as quickSelect, but for plain inputs: clicking
-  // the empty box drops the full list down, typing filters it live, picking
-  // fills the box and fires an "input" event so the page's existing filter
-  // re-runs immediately. Free typing is untouched — the input's own
-  // multi-field search (phone, GST, description…) keeps working.
-  // provider() is called on every open, so the suggestions always track the
-  // page's live data (add/delete reflected with no refresh hook needed).
+  // Suggestion dropdown for free-text table search boxes
   function searchSuggest(inputEl, provider, opts) {
     if (!inputEl || inputEl.dataset.searchSuggest === "1") return;
     inputEl.dataset.searchSuggest = "1";
@@ -701,10 +641,6 @@ window.UI = (function () {
     const panel = document.createElement("div");
     panel.className = "search-suggest-panel";
     panel.setAttribute("role", "listbox");
-    // CSS vars only: the dark theme redefines them, so one panel serves both
-    // palettes with no dedicated dark override (hover uses surface-alt too).
-    // Anchored to the INPUT (not the whole header row it may sit in) and
-    // width:max-content so a short list hugs its text like a native dropdown.
     panel.style.cssText = "display:none; position:absolute; " +
       "background:var(--color-surface, #fff); color:var(--color-text, #17324a); " +
       "border:1px solid var(--color-border); border-radius:6px; " +
@@ -713,16 +649,12 @@ window.UI = (function () {
     if (inputEl.nextSibling) parent.insertBefore(panel, inputEl.nextSibling);
     else parent.appendChild(panel);
     function sizePanel() {
-      // Place directly under the input and cap the width so a right-aligned
-      // search box cannot push the panel past the window edge.
       const r = inputEl.getBoundingClientRect();
       const room = Math.max(160, window.innerWidth - r.left - 12);
       panel.style.left = inputEl.offsetLeft + "px";
       panel.style.top = (inputEl.offsetTop + inputEl.offsetHeight + 2) + "px";
       panel.style.maxWidth = Math.min(room, Math.max(240, Math.round(r.width) + 40)) + "px";
     }
-    // A pick dispatches a synthetic "input"; swallow exactly that event so
-    // the panel is not immediately re-rendered/re-opened by the handler below.
     let suppress = false;
     const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
       { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
@@ -754,13 +686,11 @@ window.UI = (function () {
           `onmouseleave="this.style.background=''">${esc(label)}</div>`;
       }).join("") +
         (hits.length > shown.length
-          ? `<div style="padding:6px 12px; font-size:11px; color:var(--color-text-muted); border-top:1px solid var(--color-border);">… ${hits.length - shown.length} more — keep typing</div>`
+          ? `<div style="padding:6px 12px; font-size:11px; color:var(--color-text-muted); border-top:1px solid var(--color-border);">... ${hits.length - shown.length} more -- keep typing</div>`
           : "");
       sizePanel();
-      panel.style.display = "block"; // width:max-content keeps it hugging its text
+      panel.style.display = "block";
       panel.querySelectorAll("[data-label]").forEach((el) => {
-        // mousedown + preventDefault: runs before the input's blur (which
-        // hides the panel) and keeps focus in the box.
         el.addEventListener("mousedown", (ev) => {
           ev.preventDefault();
           pick(el.dataset.label);
@@ -777,21 +707,8 @@ window.UI = (function () {
     inputEl.addEventListener("blur", () => { setTimeout(hide, 150); });
   }
 
-  // Shared timestamp key for date sorting (UI.tsKey).
-  // Formatted dates ("10/4/2026") and ISO datetimes both misorder under the
-  // shared digit-strip sorter, so every renderTable with a date cell carries
-  // a hidden timestamp plus a sortValue hook, like reports/dashboard do.
-  // Same-day rows share one business date, so the entry time breaks the tie:
-  // the day comes from the business date, the clock from when the row was
-  // recorded. Without the overlay, 10am/4pm/7pm all key at midnight and the
-  // click-sort keeps arrival order instead of time order.
+  // Shared timestamp key for date sorting
   function tsKey(v, t) {
-    // Both values must ride the same parser as dateWithTime: a business date
-    // ("2026-10-18") and a naive created_at ("2026-10-18 16:45:33") mean IST
-    // wall time, and SQLite keeps six microsecond digits. Raw new Date()
-    // treats the first as UTC midnight and rejects or re-bases the second,
-    // so same-day ties keyed at midnight and the click-sort fell back to
-    // arrival order instead of creation time.
     const d = asUtcDate(v);
     if (!d || isNaN(d.getTime())) return null;
     if (t != null && t !== "") {
@@ -803,12 +720,7 @@ window.UI = (function () {
     return d.getTime();
   }
 
-  // Shared FY document-number key (UI.docNumKey) for header-click sorting.
-  // "CH/26-27/0001" sorts by FY then sequence, not by a digit strip (which
-  // collapses every FY number to 26 and parses legacy "CH-45181" as
-  // negative). Legacy and hand-entered numbers carry only their trailing
-  // sequence and sort before FY rows. End-anchored, so an archived badge
-  // HTML prefix in the cell is ignored.
+  // Shared FY document-number key for header-click sorting
   function docNumKey(v) {
     const s = String(v == null ? "" : v);
     const m = s.match(/(\d+)-(\d+)\/(\d+)\s*$/);
@@ -817,15 +729,11 @@ window.UI = (function () {
     return t ? parseInt(t[1], 10) : 0;
   }
 
-  // Sort rows by key (numeric-aware, nulls/placeholder last in asc).
-  // dir: 1 = ascending, -1 = descending. Returns a new array.
-  // valFn (optional): maps a row to its sort value, for columns whose
-  // display text does not sort correctly (e.g. FY document numbers like
-  // "CH/26-27/0001", which a plain numeric strip collapses to 26).
+  // Sort rows by key
   function sortRows(rows, key, dir, valFn) {
     if (!key || !dir) return rows || [];
     const arr = (rows || []).slice();
-    const blank = v => v === undefined || v === null || v === "" || v === "—";
+    const blank = v => v === undefined || v === null || v === "" || v === "--";
     const numOf = v => {
       if (blank(v)) return null;
       const n = parseFloat(String(v).replace(/[^0-9.\-]/g, ""));
@@ -847,30 +755,21 @@ window.UI = (function () {
 
   function sortArrow(state, key) {
     if (!state || state.key !== key) return "";
-    return state.dir === -1 ? " ▼" : " ▲";
+    return state.dir === -1 ? " v" : " ^";
   }
 
   function renderTable(container, rows, columns, options) {
     if (!container) return;
     const keys = columns ? columns.map((c) => (typeof c === "string" ? c : c.key)) : (rows[0] ? Object.keys(rows[0]) : []);
     const headers = columns ? columns.map((c) => (typeof c === "string" ? c : c.label || c.key)) : keys;
-    // Click-to-sort on every header except Actions (on by default).
     const sortable = !options || options.sortable !== false;
-    // Optional per-row CSS class, e.g. dimming archived (soft-deleted) rows.
     const rowClass = options && options.rowClass;
-    // Opt-in pagination for long lists: options.pageSize (rows per page).
-    // Off by default so existing tables render exactly as before.
     let pageSize = (options && options.pageSize) || 0;
-    // Low-spec mode (Customize modal on the dashboard): halve long pages
-    // so the DOM stays small on weak hardware. Unpaginated tables are
-    // untouched — only explicit page sizes shrink, never to zero.
     try {
       if (pageSize > 8 && localStorage.getItem("dash_low_spec") === "1") pageSize = 8;
     } catch (e) {}
     const state = (sortable && container._sortState) || {};
     let display = rows || [];
-    // Per-column sort values (options.sortValue = {key: row => value}) for
-    // columns whose display text does not sort correctly on its own.
     const sortValFn = (sortable && options && options.sortValue) || {};
     if (sortable && state.key) display = sortRows(display, state.key, state.dir, sortValFn[state.key]);
     let page = 1, pages = 1;
@@ -893,7 +792,7 @@ window.UI = (function () {
           (r) => {
             const cls = rowClass ? rowClass(r) : "";
             return `<tr${cls ? ` class="${cls}"` : ""}>${keys
-              .map((k) => `<td>${r[k] !== undefined && r[k] !== null ? r[k] : "—"}</td>`)
+              .map((k) => `<td>${r[k] !== undefined && r[k] !== null ? r[k] : "--"}</td>`)
               .join("")}</tr>`;
           }
         )
@@ -902,9 +801,9 @@ window.UI = (function () {
     container.innerHTML = `<div class="table-wrap">${html}</div>` +
       (pages > 1
         ? `<div style="display:flex; gap:8px; align-items:center; margin-top:8px; font-size:13px;">` +
-          `<button class="btn btn-sm btn-secondary" data-pg="-1"${page <= 1 ? " disabled" : ""}>← Prev</button>` +
+          `<button class="btn btn-sm btn-secondary" data-pg="-1"${page <= 1 ? " disabled" : ""}><- Prev</button>` +
           `<span style="color:var(--color-text-muted);">Page ${page} of ${pages}</span>` +
-          `<button class="btn btn-sm btn-secondary" data-pg="1"${page >= pages ? " disabled" : ""}>Next →</button></div>`
+          `<button class="btn btn-sm btn-secondary" data-pg="1"${page >= pages ? " disabled" : ""}>Next -></button></div>`
         : "");
     container.querySelectorAll("button[data-pg]").forEach(b => {
       b.addEventListener("click", () => {
@@ -924,11 +823,63 @@ window.UI = (function () {
         });
       });
     }
+    // Enable keyboard navigation for table rows
+    enableTableKeyboardNav(container);
   }
 
-  // Information dialog: like confirmDialog but with a single dismiss
-  // button. Used when an action cannot run, so the popup always explains
-  // WHY instead of leaving a dead button behind.
+  // Enable keyboard navigation for table rows (Arrow keys, Enter to click first action)
+  function enableTableKeyboardNav(container) {
+    const table = container.querySelector("table");
+    if (!table) return;
+    const rows = table.querySelectorAll("tbody tr");
+    if (!rows.length) return;
+    let focusedIdx = -1;
+    table.setAttribute("tabindex", "0");
+    table.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        focusedIdx = Math.min(focusedIdx + 1, rows.length - 1);
+        updateFocus();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        focusedIdx = Math.max(focusedIdx - 1, 0);
+        updateFocus();
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        const row = rows[focusedIdx];
+        if (row) {
+          const actionBtn = row.querySelector(".row-actions .btn");
+          if (actionBtn) actionBtn.click();
+        }
+      } else if (e.key === "Escape") {
+        table.blur();
+        focusedIdx = -1;
+        updateFocus();
+      }
+    });
+    table.addEventListener("focus", () => {
+      if (focusedIdx === -1 && rows.length) focusedIdx = 0;
+      updateFocus();
+    });
+    table.addEventListener("blur", () => {
+      focusedIdx = -1;
+      updateFocus();
+    });
+    function updateFocus() {
+      rows.forEach((r, i) => {
+        if (i === focusedIdx) {
+          r.style.outline = "2px solid var(--color-primary)";
+          r.style.outlineOffset = "-2px";
+          r.scrollIntoView({ block: "nearest" });
+        } else {
+          r.style.outline = "";
+          r.style.outlineOffset = "";
+        }
+      });
+    }
+  }
+
+  // Information dialog
   function infoDialog(title, message) {
     const overlay = document.createElement("div");
     overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:200;display:flex;align-items:center;justify-content:center;padding:24px;";
@@ -954,15 +905,7 @@ window.UI = (function () {
     if (btn) btn.focus();
   }
 
-  // Blocked-action explainer. Buttons that cannot run must say why instead
-  // of silently swallowing the click. Two sources, checked in order:
-  //  1. data-block-reason set by the page for a record in the wrong state
-  //     (draft challan + Payment, paid invoice + Pay). The page knows the
-  //     record, so the reason is specific.
-  //  2. Editor Mode off: every dimmed [data-approve] / .btn-danger inside a
-  //     card explains the padlock instead of doing nothing.
-  // The interceptor runs in the capture phase and stops the event before
-  // any inline onclick handler fires, so the blocked action can never run.
+  // Blocked-action explainer
   function installBlockExplainer() {
     if (window.__mfBlockExplainer) return;
     window.__mfBlockExplainer = true;
@@ -1018,8 +961,7 @@ window.UI = (function () {
     else overlay.focus();
   }
 
-  // Themed prompt: replaces window.prompt so a rename never flashes a bare
-  // browser popup. Esc/backdrop cancels (onOk skipped); Enter submits.
+  // Themed prompt
   function promptDialog(title, label, defaultValue, onOk) {
     const overlay = document.createElement("div");
     overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:200;display:flex;align-items:center;justify-content:center;padding:24px;";
@@ -1062,55 +1004,25 @@ window.UI = (function () {
     input.select();
   }
 
-  /* ---------- Mandatory change note (everywhere) ----------
-
-     Policy: every edit, archive/restore and status change asks the
-     operator WHY, and ships the note as the ?reason= query parameter.
-     The backend validates it (at least 5 characters) and stores it in
-     the audit history beside the change.
-
-     Enforcement lives in ONE place: a fetch wrapper that intercepts the
-     mutating calls (PUT/PATCH/DELETE, plus the POSTs that change an
-     existing record's state) and asks for the note before anything is
-     sent. No page can forget to ask, and an endpoint added tomorrow is
-     covered automatically. Creates (plain POSTs) and holder endpoints
-     (/auth, imports, notifications, the dashboard share links) never
-     prompt, and a call whose URL or body already carries "reason" is
-     left untouched. */
-
+  /* ---------- Mandatory change note (everywhere) ---------- */
   const _REASON_MIN = 5;
-
-  // ?reason= query parameter: the transport every mutating call uses once
-  // the note is collected, matched by the backend's _change_reason().
   function _reasonUrl(url, note) {
     const sep = url.indexOf("?") >= 0 ? "&" : "?";
     return url + sep + "reason=" + encodeURIComponent(note);
   }
-
   function reasonNeeded(method, url) {
-    // Holder endpoints and plain creates never prompt.
     if (/\/auth\//i.test(url) || /^\/?import(\/|$)/i.test(url)) return false;
     if (/\/notifications\//i.test(url)) return false;
     if (/\/api\/dashboard\//i.test(url)) return false;
     if (/\/dashboard\/share/i.test(url)) return false;
-
-    // Change notes are required only where money moves: customer/supplier
-    // payments, cash movements, expenses and salary payments. Everything else
-    // (masters, challans, products, settings…) edits without a "why?" prompt,
-    // matching the backend's _change_reason() scope.
     if (/^(put|patch|delete)$/i.test(method)) {
       return (
-        // customer payment edit/archive
         /^\/payments\/\d+($|\?)/i.test(url) ||
-        // supplier payment archive
         /^\/supplier-payments\/\d+($|\?)/i.test(url) ||
-        // salary payment archive
         /^\/payroll\/payments\/\d+($|\?)/i.test(url) ||
-        // expense archive
         /^\/expenses\/\d+($|\?)/i.test(url)
       );
     }
-    // POST: only the money-moving state changes.
     if (/^post$/i.test(method)) {
       return (
         /^\/payments\/\d+\/restore($|\?)/i.test(url) ||
@@ -1122,9 +1034,6 @@ window.UI = (function () {
     }
     return false;
   }
-
-  // Themed note dialog. Resolves with the trimmed note, or null on cancel.
-  // Say button stays disabled (and shows why) until the note is real.
   function reasonPrompt(title, hint) {
     return new Promise((resolve) => {
       const overlay = document.createElement("div");
@@ -1167,7 +1076,6 @@ window.UI = (function () {
       };
       area.addEventListener("input", validate);
       area.addEventListener("keydown", (e) => {
-        // Enter is the note's line break; Ctrl/Cmd+Enter submits.
         if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && validate()) {
           e.preventDefault();
           done(area.value.trim());
@@ -1182,7 +1090,6 @@ window.UI = (function () {
       area.focus();
     });
   }
-
   function installReasonGate() {
     if (window.__mfReasonGate) return;
     window.__mfReasonGate = true;
@@ -1200,7 +1107,7 @@ window.UI = (function () {
           return reasonPrompt().then((note) => {
             if (!note) {
               throw new Error(
-                "Change cancelled — a written reason is required for every change."
+                "Change cancelled -- a written reason is required for every change."
               );
             }
             const newUrl = _reasonUrl(url, note);
@@ -1215,12 +1122,7 @@ window.UI = (function () {
   }
   installReasonGate();
 
-  // Inline field errors: mark the control and put the message next to it
-  // instead of only a page-level note. `mapping` translates the API's
-  // field name (last element of a 422 `loc` array, or a plain key) to a
-  // DOM id. Returns true when at least one field was marked; otherwise the
-  // caller should fall back to the page message. Call clearFieldErrors
-  // first on every submit so stale marks never linger.
+  // Inline field errors
   function clearFieldErrors(form) {
     if (!form || !form.querySelectorAll) return;
     form.querySelectorAll("[data-field-error]").forEach(el => el.remove());
@@ -1254,13 +1156,11 @@ window.UI = (function () {
     });
     return marked > 0;
   }
-  // button until release() runs; a second click while saving gets null and
-  // must return immediately. Call release() on every exit path.
+
+  // Submit guard
   function submitGuard(event) {
     let btn = event && (event.submitter ||
       (event.target && event.target.querySelector && event.target.querySelector('[type="submit"],button:not([type])')));
-    // Plain click handlers (onclick="saveX(event)") carry no submitter: the
-    // clicked button itself is the thing to lock.
     if (!btn && event && event.type === "click" && event.target && event.target.closest) {
       btn = event.target.closest("button");
     }
@@ -1279,6 +1179,7 @@ window.UI = (function () {
       }
     };
   }
+
   // Page loader helper
   function setLoading(btn, isLoading) {
     if (!btn) return;
@@ -1292,83 +1193,219 @@ window.UI = (function () {
     }
   }
 
-    // Persist small UI filter state (a date range, a toggle) so it survives
-    // navigation and reload, the same way the sidebar's collapsed sections do.
-    // Filters are the user's choice, so the app must never silently reset them.
-    function saveFilterState(key, state) {
-      try { localStorage.setItem("mf_filter_" + key, JSON.stringify(state || {})); }
-      catch (e) { /* private mode / quota - filters just won't persist */ }
-    }
-    function loadFilterState(key) {
-      try { return JSON.parse(localStorage.getItem("mf_filter_" + key) || "null"); }
-      catch (e) { return null; }
-    }
+  // Persist small UI filter state
+  function saveFilterState(key, state) {
+    try { localStorage.setItem("mf_filter_" + key, JSON.stringify(state || {})); }
+    catch (e) { /* private mode / quota */ }
+  }
+  function loadFilterState(key) {
+    try { return JSON.parse(localStorage.getItem("mf_filter_" + key) || "null"); }
+    catch (e) { return null; }
+  }
 
-    // Shared money display: Indian grouping with ₹, "—" for blank. Every
-    // money cell uses this so a bare number never leaves its unit ambiguous.
-    function money(v) {
-      if (v === null || v === undefined || v === "") return "—";
-      const n = parseFloat(v);
-      if (isNaN(n)) return "—";
-      return "₹ " + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
+  // Shared money display
+  function money(v) {
+    if (v === null || v === undefined || v === "") return "--";
+    const n = parseFloat(v);
+    if (isNaN(n)) return "--";
+    return "Rs. " + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
 
-    // Shared quantity/weight/percent display: storage carries up to 3 decimals
-    // (25.000) plus float dust (12.3456789). Show up to 3, dropping trailing
-    // zeros, so 25 stays 25 and 0.125 stays 0.125. Money keeps money().
-    function trimNum(v) {
-      if (v === null || v === undefined || v === "") return "—";
-      const n = parseFloat(v);
-      if (isNaN(n)) return "—";
-      return String(Math.round(n * 1000) / 1000);
-    }
+  // Shared quantity/weight/percent display
+  function trimNum(v) {
+    if (v === null || v === undefined || v === "") return "--";
+    const n = parseFloat(v);
+    if (isNaN(n)) return "--";
+    return String(Math.round(n * 1000) / 1000);
+  }
 
-    // Shared alphabetical order for dropdown options: every master
-    // dropdown (customers, suppliers, materials, products, employees)
-    // lists names A-Z. Returns a sorted copy; numeric/size/stage/date
-    // dropdowns keep their own meaningful order and must not use this.
-    function sortByName(rows) {
-      return (rows || []).slice().sort((a, b) =>
-        String(a && a.name != null ? a.name : "").localeCompare(
-          String(b && b.name != null ? b.name : ""), undefined, { sensitivity: "base" }));
-    }
+  // Shared alphabetical order for dropdown options
+  function sortByName(rows) {
+    return (rows || []).slice().sort((a, b) =>
+      String(a && a.name != null ? a.name : "").localeCompare(
+        String(b && b.name != null ? b.name : ""), undefined, { sensitivity: "base" }));
+  }
 
-    // Shared quantity display, max 2 decimals: stock figures arrive with
-    // up to 3 (4980.000) and form inputs get prefilled the same way
-    // (17.500). The eye never needs more than two, and trailing zeros go,
-    // so 17.5 stays 17.5 and 4980 stays 4980.
-    function qty2(v) {
-      if (v === null || v === undefined || v === "") return "—";
-      const n = parseFloat(v);
-      if (isNaN(n)) return "—";
-      return String(Math.round(n * 100) / 100);
-    }
+  // Shared quantity display, max 2 decimals
+  function qty2(v) {
+    if (v === null || v === undefined || v === "") return "--";
+    const n = parseFloat(v);
+    if (isNaN(n)) return "--";
+    return String(Math.round(n * 100) / 100);
+  }
 
-    // Shared figure box (UI.figBox): one outline language for key figures
-    // across summary pages. Zero/empty stays plain, negatives get the red
-    // outline, positives the slate one. Pass the already-formatted text.
-    function figBox(text, n) {
-      const v = parseFloat(n);
-      if (isNaN(v) || v === 0) return text;
-      return `<span class="fig-box${v < 0 ? " fig-neg" : ""}">${text}</span>`;
-    }
+  // Shared figure box
+  function figBox(text, n) {
+    const v = parseFloat(n);
+    if (isNaN(v) || v === 0) return text;
+    return `<span class="fig-box${v < 0 ? " fig-neg" : ""}">${text}</span>`;
+  }
 
-    return { notify, api, renderTable, confirmDialog, infoDialog, promptDialog, setLoading, submitGuard, fieldError: showFieldErrors, clearFieldErrors, fyStartDate, inCurrentFy, fyStartStr, applyFyStart, dropInvertedRange, inDateRange, applySearchDeepLink, dateWithTime, dateTimeText, fmtDateTime, fmtDay, quickSelect, searchSuggest, sortRows, sortArrow, tsKey, money, trimNum, qty2, figBox, sortByName, docNumKey, formatError, download, downloadBlob, copyText, parseSizeNameToKg, suggestSizeName, bindSizeWeightAuto, fixLooseWeight, resetDraggable, saveFilterState, loadFilterState };
+  // ---- Keyboard Navigation Helpers ----
+
+  // Install global keyboard shortcuts:
+  // - Ctrl+N: New record (context-aware: challan on challans page, invoice on invoices page, etc.)
+  // - Esc: Close any open modal/overlay
+  // - Enter in table: trigger first action button
+  // - Tab: fluid navigation between form fields
+  function installKeyboardShortcuts() {
+    if (window.__mfKeyboardShortcuts) return;
+    window.__mfKeyboardShortcuts = true;
+
+    document.addEventListener("keydown", (e) => {
+      // Ignore if typing in input/textarea/select
+      const t = e.target;
+      const isInput = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+      if (isInput && !(e.key === "Escape")) return;
+
+      // Ctrl+N -- New record (context-aware)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        handleNewRecordShortcut();
+        return;
+      }
+
+      // Escape -- Close topmost modal/overlay
+      if (e.key === "Escape") {
+        closeTopmostModal();
+        return;
+      }
+    }, true); // capture phase to catch before other handlers
+
+    // Also handle modal close on Escape for any modal
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        // Close modal-overlay
+        const modal = document.querySelector(".modal-overlay[style*='display: flex'], .modal-overlay:not([style*='display: none'])");
+        if (modal && modal.style.display !== "none") {
+          const closeBtn = modal.querySelector(".modal-close, .btn-danger-outline, .btn-secondary");
+          if (closeBtn) closeBtn.click();
+        }
+        // Close any element with id ending in -overlay that's visible
+        document.querySelectorAll("[id$='-overlay']").forEach(el => {
+          if (el.style.display !== "none" && !el.hidden) {
+            const closeBtn = el.querySelector(".modal-close, [onclick*='close'], [onclick*='cancel'], .btn-danger-outline, .btn-secondary");
+            if (closeBtn) closeBtn.click();
+          }
+        });
+      }
+    });
+  }
+
+  // Context-aware new record shortcut
+  function handleNewRecordShortcut() {
+    const hash = window.location.hash || "";
+    if (hash.includes("/challans")) {
+      if (typeof window.openNewChallanForm === "function") window.openNewChallanForm();
+    } else if (hash.includes("/invoices")) {
+      if (typeof window.openNewInvoiceForm === "function") window.openNewInvoiceForm();
+    } else if (hash.includes("/customers")) {
+      if (typeof window.openNewCustomerForm === "function") window.openNewCustomerForm();
+    } else if (hash.includes("/suppliers")) {
+      if (typeof window.openNewSupplierForm === "function") window.openNewSupplierForm();
+    } else if (hash.includes("/products")) {
+      if (typeof window.openNewProductForm === "function") window.openNewProductForm();
+    } else if (hash.includes("/raw-materials")) {
+      if (typeof window.openNewRawMaterialForm === "function") window.openNewRawMaterialForm();
+    } else if (hash.includes("/production")) {
+      if (typeof window.openNewProductionForm === "function") window.openNewProductionForm();
+    } else if (hash.includes("/expenses")) {
+      if (typeof window.openNewExpenseForm === "function") window.openNewExpenseForm();
+    } else if (hash.includes("/employees")) {
+      if (typeof window.openNewEmployeeForm === "function") window.openNewEmployeeForm();
+    } else if (hash.includes("/dashboard")) {
+      // Dashboard default: new challan
+      if (typeof window.openNewChallanForm === "function") window.openNewChallanForm();
+    } else {
+      notify("No 'New' action on this page. Go to Challans, Invoices, Customers, etc.", "info");
+    }
+  }
+
+  // Close the topmost visible modal/overlay
+  function closeTopmostModal() {
+    // Priority order: modal-overlay > specific overlays > dialog boxes
+    const modal = document.querySelector(".modal-overlay:not([style*='display: none'])");
+    if (modal && modal.style.display !== "none") {
+      const closeBtn = modal.querySelector(".modal-close, .btn-danger-outline, .btn-secondary");
+      if (closeBtn) { closeBtn.click(); return; }
+    }
+    // Specific known overlays
+    const overlays = [
+      "recvpick-overlay", "challan-pay-overlay", "invoice-pay-overlay",
+      "dispatch-overlay", "import-preview-overlay", "bulk-action-overlay"
+    ];
+    for (const id of overlays) {
+      const el = document.getElementById(id);
+      if (el && el.style.display !== "none") {
+        const closeBtn = el.querySelector(".modal-close, .btn-danger-outline, .btn-secondary, [onclick*='close'], [onclick*='cancel']");
+        if (closeBtn) { closeBtn.click(); return; }
+      }
+    }
+    // Generic: any .dlg-box with a close button
+    const dlg = document.querySelector(".dlg-box:not([style*='display: none'])");
+    if (dlg) {
+      const closeBtn = dlg.querySelector(".btn-secondary, .btn-danger-outline, #dlg-cancel, #dlg-ok");
+      if (closeBtn) { closeBtn.click(); return; }
+    }
+  }
+
+  // Install once
+  installKeyboardShortcuts();
+
+  // ---- Date Input Helpers (IST consistency) ----
+
+  // Ensure a date input respects IST (prevents browser timezone shift)
+  function bindISTDateInput(inputEl) {
+    if (!inputEl || inputEl.type !== "date") return;
+    if (inputEl.dataset.istBound === "1") return;
+    inputEl.dataset.istBound = "1";
+    // On blur, ensure the value is a valid date string
+    inputEl.addEventListener("blur", () => {
+      const v = inputEl.value;
+      if (!v) return;
+      // Validate format YYYY-MM-DD
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
+      // Parse as local (IST) to verify it's a valid date
+      const d = new Date(v + "T00:00:00+05:30");
+      if (isNaN(d.getTime())) {
+        inputEl.value = "";
+        notify("Invalid date", "error");
+      }
+    });
+  }
+
+  // Get today's date in IST as YYYY-MM-DD for date inputs
+  function todayIST() {
+    const now = new Date();
+    const ist = new Date(now.toLocaleString("en-US", { timeZone: IST_ZONE }));
+    const yyyy = ist.getFullYear();
+    const mm = String(ist.getMonth() + 1).padStart(2, "0");
+    const dd = String(ist.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  return {
+    notify, api, renderTable, confirmDialog, infoDialog, promptDialog, setLoading, submitGuard,
+    fieldError: showFieldErrors, clearFieldErrors,
+    fyStartDate, inCurrentFy, fyStartStr, applyFyStart, dropInvertedRange, inDateRange,
+    applySearchDeepLink, dateWithTime, dateTimeText, fmtDateTime, fmtDay,
+    quickSelect, searchSuggest, sortRows, sortArrow, tsKey, money, trimNum, qty2, figBox,
+    sortByName, docNumKey, formatError, download, downloadBlob, copyText,
+    parseSizeNameToKg, suggestSizeName, bindSizeWeightAuto, fixLooseWeight,
+    resetDraggable, saveFilterState, loadFilterState,
+    // New exports
+    bindISTDateInput, todayIST, handleNewRecordShortcut, closeTopmostModal,
+    enableTableKeyboardNav
+  };
 })();
 
-// Spell-check every textarea. The change-note box carries spellcheck="true"
-// in its template, but notes/remarks textareas elsewhere (production, challans,
-// payments) relied on WebView2 defaults, which miss them. Delegated on focus so
-// JS-built rows are covered too.
+// Spell-check every textarea
 document.addEventListener("focusin", (e) => {
   const t = e.target;
   if (t && t.tagName === "TEXTAREA") t.spellcheck = true;
 });
 
-// Right-click Copy. The packaged desktop window shows no native context
-// menu, so right-clicking selected text otherwise does nothing at all. This
-// offers a minimal Copy item for the current selection; editable fields and
-// password boxes are left alone.
+// Right-click Copy
 (function () {
   let menu = null;
   function hideMenu() { if (menu) { menu.remove(); menu = null; } }
@@ -1410,18 +1447,12 @@ document.addEventListener("focusin", (e) => {
   window.addEventListener("blur", hideMenu);
 })();
 
-// Draggable popups. Any element carrying [data-drag-handle] becomes a grab
-// handle for its dialog box (closest .modal-card/.dlg-box, else the parent
-// box). One delegated listener covers static markup and dynamically injected
-// dialogs alike; backdrop-click close and Esc are untouched. Dialogs recenter
-// on every open because each open path calls UI.resetDraggable (freshly
-// created nodes need nothing).
+// Draggable popups
 (function () {
   document.addEventListener("pointerdown", (e) => {
     const handle = e.target && e.target.closest
       ? e.target.closest("[data-drag-handle]") : null;
     if (!handle) return;
-    // A press starting on a button (e.g. the ✕) belongs to the button.
     if (e.target.closest("button")) return;
     if (e.pointerType === "mouse" && e.button !== undefined && e.button !== 0) return;
     const box = handle.closest(".modal-card, .dlg-box") || handle.parentElement;
@@ -1456,8 +1487,7 @@ document.addEventListener("focusin", (e) => {
   });
 })();
 
-// Global client-error capture: report uncaught page errors to the alert log.
-// Capped per session and never recursive (failures stay in the console only).
+// Global client-error capture
 (function () {
   let reported = 0;
   window.addEventListener("error", (event) => {
@@ -1477,7 +1507,7 @@ document.addEventListener("focusin", (e) => {
   });
 })();
 
-// Add simple spin keyframes via injected style if needed
+// Spin keyframes
 if (!document.getElementById("ui-spin-style")) {
   const s = document.createElement("style");
   s.id = "ui-spin-style";

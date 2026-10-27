@@ -416,7 +416,7 @@ window.UI = (function () {
     } catch (e) {}
     if (selectEl.required) { try { input.required = true; } catch (e) {} }
 
-    const escH = s => String(s == null ? "" : s).replace(/&/g, "&").replace(/</g, "<").replace(/>/g, ">").replace(/"/g, """);
+    const escH = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     let activeIdx = -1;
     let current = [];
 
@@ -657,7 +657,7 @@ window.UI = (function () {
     }
     let suppress = false;
     const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
-      { "&": "&", "<": "<", ">": ">", '"': """, "'": "'" }[c]
+      { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
     ));
     const labelOf = (n) => String((n && typeof n === "object" && n.label != null) ? n.label : n);
     function hide() { panel.style.display = "none"; panel.innerHTML = ""; }

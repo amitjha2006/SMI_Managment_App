@@ -686,6 +686,12 @@ function isLowSpec() {
 }
 
 async function loadSnapCustomize() {
+  /* esc() is defined inside the page IIFE (which closed above), so this
+     top-level function can't reach it — define a local escaper to avoid a
+     ReferenceError that aborts the snapshot customize render. */
+  const esc = (s) => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
   const box = document.getElementById("snap-raw-list");
   if (!box) return;
   const prefs = loadSnapPrefs();

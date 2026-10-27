@@ -91,7 +91,7 @@ def get_purchase_invoice(invoice_id: int, db: Session = Depends(get_db)):
         "items": [
             {
                 "id": it.id,
-                "sales_invoice_id": it.sales_invoice_id,
+                "purchase_invoice_id": it.purchase_invoice_id,
                 "product_id": it.product_id,
                 "packaging_size_id": it.packaging_size_id,
                 "quantity": float(it.quantity or 0),

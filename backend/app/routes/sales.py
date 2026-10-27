@@ -80,8 +80,7 @@ def challan_dispatch_options(db: Session = Depends(get_db)):
 # Challan routes
 @router.get("/challans", response_model=list[SalesChallanSchema])
 def list_challans(request: Request = None, db: Session = Depends(get_db)):
-    from backend.app.core.shared import _challan_entry_allowed, _latest_login_at
-    from backend.main import _current_user
+    from backend.app.core.shared import _challan_entry_allowed, _current_user, _latest_login_at
     user = _current_user(db, request) if request else None
     query = db.query(SalesChallan).filter(SalesChallan.is_archived == False).order_by(SalesChallan.id.desc())  # noqa: E712
     if user and hasattr(user, 'role'):

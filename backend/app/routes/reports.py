@@ -624,6 +624,7 @@ def list_expenses(
         {
             "id": e.id,
             "date": e.date.isoformat() if e.date else None,
+            "created_at": e.created_at,
             "description": e.description,
             "category_name": e.category.name if e.category else "",
             "category_id": e.category_id,
@@ -713,7 +714,7 @@ def create_expense(payload: dict, request: Request, db: Session = Depends(get_db
     db.commit()
     db.refresh(exp)
     cat_name = exp.category.name if exp.category else "Miscellaneous"
-    return {"category_name": cat_name, "id": exp.id}
+    return {"category_name": cat_name, "id": exp.id, "created_at": exp.created_at}
 
 
 @router.delete("/expenses/{expense_id}")

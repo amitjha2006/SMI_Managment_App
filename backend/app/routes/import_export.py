@@ -54,9 +54,7 @@ def import_types():
 def import_reports(db: Session = Depends(get_db), limit: int | None = None):
     """List all import reports."""
     from backend.app.models import ImportReport
-    q = db.query(ImportReport).order_by(ImportReport.id.desc())
-    if limit is not None:
-        q = q.limit(limit)
+    q = db.query(ImportReport).order_by(ImportReport.id.desc()).limit(20)
     return [
         {
             "id": r.id,
@@ -67,6 +65,7 @@ def import_reports(db: Session = Depends(get_db), limit: int | None = None):
             "skipped": r.skipped,
             "failed": r.failed,
             "errors": json.loads(r.errors) if r.errors else [],
+            "skipped_rows": json.loads(r.skipped_rows) if r.skipped_rows else [],
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }
         for r in q.all()
@@ -158,6 +157,28 @@ def undo_last_import(request: Request, db: Session = Depends(get_db), payload: d
     return {"status": "undone", "import_type": import_type, "report_id": report.id}
 
 
+def _save_import_report(db: Session, import_type: str, filename: str, result: dict, report=None):
+    """Persist an import result row (errors + skipped_rows serialized as JSON).
+
+    Updates `report` if given, otherwise creates a new row. Raises on failure
+    so the caller can convert it to a 500.
+    """
+    if report is None:
+        report = ImportReport(
+            import_type=import_type,
+            filename=filename,
+        )
+        db.add(report)
+    report.imported = result.get("imported", 0)
+    report.skipped = result.get("skipped", 0)
+    report.failed = result.get("failed", 0)
+    report.errors = json.dumps(result.get("errors", []))
+    report.skipped_rows = json.dumps(result.get("skipped_rows", []), default=str)
+    db.commit()
+    db.refresh(report)
+    return report
+
+
 @router.post("/import/{import_type}")
 async def import_data(import_type: str, request: Request = None, file: UploadFile = File(None), sheet: str | None = None, db: Session = Depends(get_db)):
     """Import data from Excel file, taking a pre-import safety copy first."""
@@ -172,6 +193,7 @@ async def import_data(import_type: str, request: Request = None, file: UploadFil
     _run_import_fn = getattr(main_mod, "run_import", None) if main_mod else None
     if _run_import_fn is None:
         from backend.app.services.excel_import import run_import as _run_import_fn
+    _save_import_report_fn = getattr(main_mod, "_save_import_report", None) if main_mod else None
 
     # Pre-import safety copy
     backup_rec = _do_backup_fn(
@@ -201,6 +223,7 @@ async def import_data(import_type: str, request: Request = None, file: UploadFil
 
     try:
         result = _run_import_fn(db, import_type, content, sheet)
+        result["status"] = "success"
         result["pre_import_backup"] = backup_rec.filename
         report.imported = result.get("imported", 0)
         db.commit()
@@ -209,6 +232,18 @@ async def import_data(import_type: str, request: Request = None, file: UploadFil
         report.errors = json.dumps([{"message": str(e)}])
         db.commit()
         raise HTTPException(status_code=500, detail="Import failed: " + str(e))
+
+    # Persist the full import report (errors + skipped_rows). If this fails,
+    # the import still happened but we report it as a 500 so the frontend
+    # can surface the problem instead of a silent blank.
+    try:
+        if _save_import_report_fn is not None:
+            _save_import_report_fn(
+                db, import_type, getattr(file, "filename", "upload"), result, report
+            )
+        db.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="recording the result failed: " + str(e))
 
     _audit(db, request, "import", "create", record_type="import_report",
            new_values={"import_type": import_type, "pre_import_backup_id": backup_rec.id, "pre_import_backup": backup_rec.filename, "imported": result.get("imported", 0)})

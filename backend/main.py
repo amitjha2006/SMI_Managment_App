@@ -412,6 +412,7 @@ import_undo_status = import_export.import_undo_status
 import_data = import_export.import_data
 undo_last_import = import_export.undo_last_import
 _prune_pre_import_backups = import_export._prune_pre_import_backups
+_save_import_report = import_export._save_import_report
 
 # Reports route aliases
 sales_trend = reports.sales_trend

@@ -146,7 +146,7 @@ def update_company_settings(payload: dict, request: Request, db: Session = Depen
 def get_session_settings(db: Session = Depends(get_db)):
     setting = db.query(ApplicationSetting).filter(ApplicationSetting.key == "session").first()
     if not setting:
-        return {"timeout_minutes": 120}
+        return {"lock_minutes": 15}
     return setting.value
 
 
@@ -157,8 +157,15 @@ def update_session_settings(payload: dict, request: Request, db: Session = Depen
     if not setting:
         setting = ApplicationSetting(key="session", value={})
         db.add(setting)
+    raw = payload.get("lock_minutes", 15)
+    try:
+        minutes = int(raw)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="lock_minutes must be a number")
+    if minutes < 0 or minutes > 240:
+        raise HTTPException(status_code=400, detail="lock_minutes must be between 0 and 240")
     setting.value = {
-        "timeout_minutes": payload.get("timeout_minutes", 120),
+        "lock_minutes": minutes,
     }
     _audit(db, request, "settings", "session_update", record=setting, record_type="application_setting", new_values=setting.value)
     db.commit()

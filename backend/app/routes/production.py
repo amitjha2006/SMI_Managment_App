@@ -196,6 +196,18 @@ def create_production_entry(entry: dict, request: Request, db: Session = Depends
         _post_raw_consumption(db, mat.get("raw_material_id"), qty_kg,
                               production_date or _ist_wall(), e.id, production_number)
 
+    # Remember wrapper roll chosen per packaging size (so pack_production_entry
+    # can deduct wrapper stock later). Each mapping says: for this size, use this
+    # raw material roll as the wrapper.
+    for mapping in entry.get("mappings") or []:
+        size_id = mapping.get("packaging_size_id")
+        material_id = mapping.get("raw_material_id")
+        if not size_id or material_id is None:
+            continue
+        size = db.query(PackagingSize).filter(PackagingSize.id == size_id).first()
+        if size:
+            size.wrapper_material_id = material_id
+
     # Add stages (with computed wastage/packing gain)
     for seq, stage in enumerate(entry.get("stages") or [], start=1):
         db.add(_add_stage_row(db, e.id, stage, seq))

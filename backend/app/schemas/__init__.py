@@ -475,6 +475,7 @@ class ProductBase(BaseModel):
     # HSN/SAC code printed on a tax invoice. Optional - the codes are the
     # business's to supply, and invoice creation warns rather than blocks.
     hsn_code: str | None = Field(None, max_length=12)
+    formulation: str | None = None
 
 
 class ProductCreate(ProductBase):

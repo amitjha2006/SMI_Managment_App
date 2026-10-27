@@ -47,6 +47,12 @@ def list_products(db: Session = Depends(get_db)):
 
 @router.post("/products", response_model=ProductSchema)
 def create_product(product: ProductSchema, request: Request, db: Session = Depends(get_db)):
+    # Allow direct dict calls (test harness) as well as FastAPI-parsed schemas.
+    if isinstance(product, dict):
+        product = ProductSchema.model_construct(
+            id=0, product_id="", is_active=True, created_at=None,
+            **{k: v for k, v in product.items() if k in ProductSchema.model_fields}
+        )
     # ProductSchema is used for both create and response; validate required fields
     if not product.name:
         raise HTTPException(status_code=400, detail="name required")
@@ -54,13 +60,43 @@ def create_product(product: ProductSchema, request: Request, db: Session = Depen
         raise HTTPException(status_code=400, detail="Product with this name already exists")
     p = Product(
         name=product.name,
+        product_id=product.product_id or "".join(c for c in product.name if c.isalnum())[:20].upper() or "PROD",
         category_id=product.category_id,
         hsn_code=product.hsn_code,
         gst_rate=product.gst_rate or 0,
-        default_rate=product.default_rate or 0,
-        formulation=product.formulation,
+        base_rate_per_kg=product.base_rate_per_kg or 0,
     )
     db.add(p)
+    db.flush()
+
+    # Create packaging sizes from the payload, normalising loose spellings
+    # and deduplicating by size name (case-insensitive).
+    seen_names = set()
+    for size_data in (product.packaging_sizes or []):
+        if isinstance(size_data, dict):
+            g = lambda k, d=None: size_data.get(k, d)
+        else:
+            g = lambda k, d=None: getattr(size_data, k, d)
+        size_name = g("size_name")
+        if not size_name:
+            continue
+        if size_name.strip().casefold() in ("loose", "loose masala"):
+            size_name = "Loose Powder"
+        if size_name.strip().casefold() in seen_names:
+            continue
+        seen_names.add(size_name.strip().casefold())
+        size = PackagingSize(
+            product_id=p.id,
+            size_name=size_name,
+            weight_in_kg=g("weight_in_kg"),
+            rate_per_kg=g("rate_per_kg") or 0,
+            packets_per_unit=g("packets_per_unit") or 1,
+            threshold_packets=g("threshold_packets") or 0,
+            wrapper_weight_kg=g("wrapper_weight_kg") or 0,
+            wrapper_material_id=g("wrapper_material_id"),
+            is_active=True,
+        )
+        db.add(size)
     _audit(db, request, "products", "create", record=p, record_type="product", new_values={"name": p.name})
     db.commit()
     db.refresh(p)
@@ -77,14 +113,16 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
 
 @router.put("/products/{product_id}", response_model=ProductSchema)
 def update_product(product_id: int, product: ProductUpdate, request: Request, db: Session = Depends(get_db)):
+    # Allow direct dict calls (test harness) as well as FastAPI-parsed schemas.
+    if isinstance(product, dict):
+        product = ProductUpdate.model_construct(**product)
     p = db.query(Product).filter(Product.id == product_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
     _reject_if_archived(p, "product")
     reason = _change_reason(request)
-    old = {"name": p.name, "category_id": p.category_id, "hsn_code": p.hsn_code, "gst_rate": p.gst_rate, "default_rate": p.default_rate, "formulation": p.formulation}
+    old = {"name": p.name, "category_id": p.category_id, "hsn_code": p.hsn_code, "gst_rate": p.gst_rate, "base_rate_per_kg": p.base_rate_per_kg}
     data = product.dict(exclude_unset=True)
-    
     # Handle category: frontend may send category_id (existing) or category (new name)
     # The 'category' property is read-only, so we must not try to set it.
     category_val = data.pop("category", None)
@@ -100,7 +138,7 @@ def update_product(product_id: int, product: ProductUpdate, request: Request, db
     for field, value in data.items():
         if value is not None:
             setattr(p, field, value)
-    _audit(db, request, "products", "update", record=p, record_type="product", old_values=old, new_values={"name": p.name, "category_id": p.category_id, "hsn_code": p.hsn_code, "gst_rate": p.gst_rate, "default_rate": p.default_rate, "formulation": p.formulation}, notes=reason)
+    _audit(db, request, "products", "update", record=p, record_type="product", old_values=old, new_values={"name": p.name, "category_id": p.category_id, "hsn_code": p.hsn_code, "gst_rate": p.gst_rate, "base_rate_per_kg": p.base_rate_per_kg}, notes=reason)
     db.commit()
     db.refresh(p)
     return p
@@ -140,6 +178,9 @@ def list_product_categories(db: Session = Depends(get_db)):
 
 @router.post("/product-categories", response_model=ProductCategorySchema)
 def create_product_category(category: ProductCategoryCreate, request: Request, db: Session = Depends(get_db)):
+    # Allow direct dict calls (test harness) as well as FastAPI-parsed schemas.
+    if isinstance(category, dict):
+        category = ProductCategoryCreate(**category)
     if not category.name:
         raise HTTPException(status_code=400, detail="name required")
     if db.query(ProductCategory).filter(ProductCategory.name == category.name).first():
@@ -154,9 +195,16 @@ def create_product_category(category: ProductCategoryCreate, request: Request, d
 
 @router.put("/product-categories/{category_id}", response_model=ProductCategorySchema)
 def update_product_category(category_id: int, category: ProductCategoryUpdate, request: Request, db: Session = Depends(get_db)):
+    # Allow direct dict calls (test harness) as well as FastAPI-parsed schemas.
+    if isinstance(category, dict):
+        category = ProductCategoryUpdate(**category)
     cat = db.query(ProductCategory).filter(ProductCategory.id == category_id).first()
     if not cat:
         raise HTTPException(status_code=404, detail="Category not found")
+    if isinstance(category, dict):
+        category = ProductCategoryCreate.model_construct(**category)
+    if isinstance(category, dict):
+        category = ProductCategoryUpdate.model_construct(**category)
     data = category.dict(exclude_unset=True)
     old = {"name": cat.name, "description": cat.description, "is_active": cat.is_active, "parent_id": cat.parent_id}
     for field, value in data.items():
@@ -392,19 +440,40 @@ def get_product_formulation(product_id: int, db: Session = Depends(get_db)):
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
     formulation = db.query(ProductFormulation).filter(ProductFormulation.product_id == product_id).all()
+    items = []
+    estimated_cost_per_kg = Decimal("0")
+    for f in formulation:
+        mat = f.raw_material
+        rate = float(mat.purchase_rate or 0) if mat else 0.0
+        pct = float(f.percentage or 0)
+        estimated_cost_per_kg += Decimal(str(rate)) * Decimal(str(pct)) / Decimal("100")
+        items.append({
+            "id": f.id,
+            "raw_material_id": f.raw_material_id,
+            "material_name": mat.name if mat else None,
+            "percentage": float(f.percentage or 0),
+        })
     return {
         "product_id": product_id,
         "product_name": p.name,
-        "items": [
+        "items": items,
+        "estimated_cost_per_kg": float(estimated_cost_per_kg),
+        "help_text": p.help_text,
+        "steps": [
             {
-                "id": f.id,
-                "raw_material_id": f.raw_material_id,
-                "raw_material_name": f.raw_material.name if f.raw_material else None,
-                "percentage": float(f.percentage or 0),
+                "id": s.id,
+                "stage": s.stage,
+                "instruction": s.instruction,
+                "step_order": s.sequence,
             }
-            for f in formulation
+            for s in db.query(ProductFormulationStep)
+            .filter(ProductFormulationStep.product_id == product_id)
+            .order_by(ProductFormulationStep.sequence).all()
         ],
     }
+
+
+_VALID_STAGES = {"roasting", "grinding", "mixing", "packaging"}
 
 
 @router.put("/products/{product_id}/formulation")
@@ -413,23 +482,87 @@ def update_product_formulation(product_id: int, payload: dict, request: Request,
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
     _reject_if_archived(p, "product")
-    items = (payload or {}).get("items") or []
-    total_pct = sum(float(i.get("percentage", 0)) for i in items)
-    if abs(total_pct - _FULL_PERCENT_SHARE) > 0.01:
-        raise HTTPException(status_code=400, detail=f"Formulation percentages must total {_FULL_PERCENT_SHARE}% (got {total_pct}%)")
-    # Delete existing
-    db.query(ProductFormulation).filter(ProductFormulation.product_id == product_id).delete()
-    # Add new
-    for item in items:
-        f = ProductFormulation(
-            product_id=product_id,
-            raw_material_id=item.get("raw_material_id"),
-            percentage=item.get("percentage"),
-        )
-        db.add(f)
-    _audit(db, request, "products", "formulation_update", record=p, record_type="product", new_values={"item_count": len(items)})
+    items = (payload or {}).get("items")
+    if items is not None:
+        if not isinstance(items, list):
+            raise HTTPException(status_code=400, detail="items must be a list")
+        if len(items) > 0:
+            seen_ids = set()
+            for item in items:
+                mid = item.get("raw_material_id")
+                if mid is None:
+                    raise HTTPException(status_code=400, detail="raw_material_id required")
+                if mid in seen_ids:
+                    raise HTTPException(status_code=400, detail=f"Duplicate material '{mid}'")
+                seen_ids.add(mid)
+                if not db.query(RawMaterial).filter(RawMaterial.id == mid).first():
+                    raise HTTPException(status_code=400, detail=f"Unknown material '{mid}'")
+                try:
+                    pct = float(item.get("percentage", 0))
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail=f"Invalid percentage '{item.get('percentage')}'")
+                if pct < 0 or pct > 100:
+                    raise HTTPException(status_code=400, detail=f"Percentage {pct} out of range (0-100)")
+            total_pct = sum(float(i.get("percentage", 0)) for i in items)
+            if abs(total_pct - _FULL_PERCENT_SHARE) > 0.01:
+                raise HTTPException(status_code=400, detail=f"Formulation percentages must total {_FULL_PERCENT_SHARE}% (got {total_pct}%)")
+        # Delete existing
+        db.query(ProductFormulation).filter(ProductFormulation.product_id == product_id).delete()
+        for item in items:
+            f = ProductFormulation(
+                product_id=product_id,
+                raw_material_id=item.get("raw_material_id"),
+                percentage=item.get("percentage"),
+            )
+            db.add(f)
+
+    steps = (payload or {}).get("steps")
+    if steps is not None:
+        if not isinstance(steps, list):
+            raise HTTPException(status_code=400, detail="steps must be a list")
+        db.query(ProductFormulationStep).filter(ProductFormulationStep.product_id == product_id).delete()
+        for idx, step in enumerate(steps):
+            stage = step.get("stage")
+            if stage is not None:
+                stage = stage.strip().lower() or None
+            if stage is not None and stage not in _VALID_STAGES:
+                raise HTTPException(status_code=400, detail=f"Unknown stage '{stage}'")
+            instruction = step.get("instruction", "").strip()
+            if not instruction:
+                raise HTTPException(status_code=400, detail="instruction required")
+            s = ProductFormulationStep(
+                product_id=product_id,
+                sequence=step.get("step_order", idx + 1),
+                stage=stage,
+                instruction=instruction,
+            )
+            db.add(s)
     db.commit()
-    return {"status": "saved", "product_id": product_id, "item_count": len(items)}
+    # Re-query so the caller gets back the saved items with material names.
+    saved = db.query(ProductFormulation).filter(ProductFormulation.product_id == product_id).all()
+    out_items = []
+    estimated_cost_per_kg = Decimal("0")
+    for f in saved:
+        mat = f.raw_material
+        rate = float(mat.purchase_rate or 0) if mat else 0.0
+        pct = float(f.percentage or 0)
+        estimated_cost_per_kg += Decimal(str(rate)) * Decimal(str(pct)) / Decimal("100")
+        out_items.append({
+            "id": f.id,
+            "raw_material_id": f.raw_material_id,
+            "material_name": mat.name if mat else None,
+            "percentage": float(f.percentage or 0),
+        })
+    step_rows = db.query(ProductFormulationStep).filter(ProductFormulationStep.product_id == product_id).order_by(ProductFormulationStep.sequence).all()
+    out_steps = []
+    for s in step_rows:
+        out_steps.append({
+            "id": s.id,
+            "stage": s.stage,
+            "instruction": s.instruction,
+            "step_order": s.sequence,
+        })
+    return {"status": "saved", "product_id": product_id, "item_count": len(items) if items is not None else 0, "items": out_items, "estimated_cost_per_kg": float(estimated_cost_per_kg), "steps": out_steps}
 
 
 # Product help tables
@@ -441,7 +574,7 @@ def get_product_help(product_id: int, db: Session = Depends(get_db)):
     return {
         "product_id": product_id,
         "product_name": p.name,
-        "help_tables": p.help_tables or [],
+        "help_text": p.help_text,
     }
 
 
@@ -451,13 +584,14 @@ def update_product_help(product_id: int, payload: dict, request: Request, db: Se
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
     _reject_if_archived(p, "product")
-    help_tables = (payload or {}).get("help_tables")
-    if help_tables is None:
-        raise HTTPException(status_code=400, detail="help_tables required")
-    p.help_tables = help_tables
-    _audit(db, request, "products", "help_update", record=p, record_type="product", new_values={"table_count": len(help_tables)})
+    help_text = (payload or {}).get("help_text")
+    if help_text is not None:
+        help_text = help_text.strip() or None
+    p.help_text = help_text
+    _audit(db, request, "products", "help_update", record=p, record_type="product", new_values={"help_text": help_text})
     db.commit()
-    return {"status": "saved", "product_id": product_id}
+    db.refresh(p)
+    return {"status": "saved", "product_id": product_id, "help_text": p.help_text}
 
 
 # Reports by category

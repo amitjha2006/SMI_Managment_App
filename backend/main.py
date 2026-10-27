@@ -336,6 +336,8 @@ archive_production = production.archive_production_entry
 # Additional test-facing aliases from other route modules
 create_product = products.create_product
 update_packaging_size = products.update_packaging_size
+create_raw_material_category = raw_materials.create_raw_material_category
+list_raw_material_categories = raw_materials.list_raw_material_categories
 list_expenses = reports.list_expenses
 list_purchase_invoices = purchase.list_purchase_invoices
 get_session_settings = settings_routes.get_session_settings
@@ -361,6 +363,7 @@ create_payment = sales.create_customer_payment
 
 # Products route aliases
 get_product_formulation = products.get_product_formulation
+set_product_formulation = products.update_product_formulation
 update_product_formulation = products.update_product_formulation
 get_product_workflow = products.get_product_workflow
 update_product_workflow = products.update_product_workflow
@@ -379,6 +382,7 @@ delete_print_footer = products.delete_print_footer
 packaging_rate_history = products.size_rate_history
 size_rate_history = products.size_rate_history
 delete_packaging_size = products.delete_packaging_size
+set_product_help = products.update_product_help
 
 # Reports route aliases
 sales_trend = reports.sales_trend

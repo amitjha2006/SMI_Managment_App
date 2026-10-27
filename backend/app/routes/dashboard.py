@@ -214,6 +214,18 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
 
     receivables_overdue = d60 + over60
 
+    # Ready to dispatch: confirmed/paid challans not yet dispatched or delivered
+    ready_to_dispatch = (
+        db.query(SalesChallan)
+        .filter(
+            SalesChallan.is_archived == False,  # noqa: E712
+            SalesChallan.status.in_(("confirmed", "paid")),
+            SalesChallan.dispatched_at == None,  # noqa: E712
+            SalesChallan.delivered_at == None,   # noqa: E712
+        )
+        .count()
+    )
+
     # Pending sales invoices: invoices whose challan still owes money
     pending_invoices_count = 0
     pending_invoices_amount = Decimal("0")
@@ -298,6 +310,7 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         "payables_aging": payables_aging,
         "payables_overdue": payables_overdue,
         "receivables_overdue": receivables_overdue,
+        "ready_to_dispatch": ready_to_dispatch,
         "pending_invoices_count": pending_invoices_count,
         "pending_invoices_amount": float(pending_invoices_amount),
         "cashflow_month": {"received": float(received), "paid": float(paid)},

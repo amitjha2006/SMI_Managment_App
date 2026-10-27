@@ -28,9 +28,33 @@ from backend.app.core.shared import (
 router = APIRouter()
 
 
-@router.get("/purchase-invoices", response_model=list[PurchaseInvoiceSchema])
+@router.get("/purchase-invoices")
 def list_purchase_invoices(db: Session = Depends(get_db)):
-    return db.query(PurchaseInvoice).filter(PurchaseInvoice.is_archived == False).order_by(PurchaseInvoice.id.desc()).all()  # noqa: E712
+    """List purchase invoices with supplier name/company for the invoices list."""
+    rows = (
+        db.query(PurchaseInvoice, Supplier)
+        .join(Supplier, PurchaseInvoice.supplier_id == Supplier.id)
+        .filter(PurchaseInvoice.is_archived == False)  # noqa: E712
+        .order_by(PurchaseInvoice.id.desc())
+        .all()
+    )
+    return [
+        {
+            "id": inv.id,
+            "invoice_number": inv.invoice_number,
+            "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+            "created_at": inv.invoice_date.isoformat() if inv.invoice_date else None,
+            "supplier_id": inv.supplier_id,
+            "supplier_name": sup.name,
+            "supplier_company": sup.company_name or "",
+            "total_amount": float(inv.total_amount or 0),
+            "paid_amount": float(inv.paid_amount or 0),
+            "outstanding_amount": float(inv.outstanding_amount or 0),
+            "status": inv.status,
+            "is_archived": inv.is_archived,
+        }
+        for inv, sup in rows
+    ]
 
 
 @router.get("/purchase-invoices/{invoice_id}", response_model=PurchaseInvoiceSchema)

@@ -363,44 +363,111 @@ def summary_report(
 
 # Recent activity
 @router.get("/reports/recent")
-def recent_activity(limit: int = 20, db: Session = Depends(get_db)):
-    """Recent activity across all modules."""
+def recent_activity(
+    limit: int = 20,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Recent activity across all modules.
+
+    Supports optional ``from_date``/``to_date`` (ISO date strings) to filter
+    on the business/recorded date of each row.
+    """
+    from datetime import datetime
+
+    fdate = None
+    tdate = None
+    if from_date:
+        fdate = datetime.fromisoformat(from_date).date()
+    if to_date:
+        tdate = datetime.fromisoformat(to_date).date()
+
     activities = []
 
     # Recent challans
-    challans = db.query(SalesChallan).filter(SalesChallan.is_archived == False).order_by(SalesChallan.id.desc()).limit(limit).all()  # noqa: E712
+    q = db.query(SalesChallan).filter(SalesChallan.is_archived == False)  # noqa: E712
+    if fdate:
+        q = q.filter(SalesChallan.challan_date >= fdate)
+    if tdate:
+        q = q.filter(SalesChallan.challan_date <= tdate)
+    challans = q.order_by(SalesChallan.id.desc()).limit(limit).all()
     for ch in challans:
+        cust = ch.customer
         activities.append({
             "type": "challan",
             "id": ch.id,
             "title": f"Challan {ch.challan_number}",
-            "subtitle": ch.customer.name if ch.customer else "",
+            "reference": ch.challan_number,
+            "party": cust.name if cust else "",
             "date": ch.challan_date.isoformat() if ch.challan_date else None,
             "amount": float(ch.total_price or 0),
+            "status": ch.status.value if ch.status else "",
+            "method": "",
         })
 
     # Recent purchase invoices
-    purchases = db.query(PurchaseInvoice).filter(PurchaseInvoice.is_archived == False).order_by(PurchaseInvoice.id.desc()).limit(limit).all()  # noqa: E712
+    q = db.query(PurchaseInvoice).filter(PurchaseInvoice.is_archived == False)  # noqa: E712
+    if fdate:
+        q = q.filter(PurchaseInvoice.invoice_date >= fdate)
+    if tdate:
+        q = q.filter(PurchaseInvoice.invoice_date <= tdate)
+    purchases = q.order_by(PurchaseInvoice.id.desc()).limit(limit).all()
     for inv in purchases:
+        sup = inv.supplier
         activities.append({
             "type": "purchase",
             "id": inv.id,
             "title": f"Invoice {inv.invoice_number}",
-            "subtitle": inv.supplier.name if inv.supplier else "",
+            "reference": inv.invoice_number,
+            "party": sup.name if sup else "",
             "date": inv.invoice_date.isoformat() if inv.invoice_date else None,
             "amount": float(inv.total_amount or 0),
+            "status": inv.payment_status.value if inv.payment_status else "",
+            "method": "",
+        })
+
+    # Recent customer payments
+    q = db.query(CustomerPayment).filter(CustomerPayment.is_archived == False)  # noqa: E712
+    if fdate:
+        q = q.filter(CustomerPayment.payment_date >= fdate)
+    if tdate:
+        q = q.filter(CustomerPayment.payment_date <= tdate)
+    payments = q.order_by(CustomerPayment.id.desc()).limit(limit).all()
+    for p in payments:
+        ch = p.challan
+        cust = ch.customer if ch else None
+        activities.append({
+            "type": "payment",
+            "id": p.id,
+            "title": f"Receipt {p.id:04d}",
+            "reference": ch.challan_number if ch else "",
+            "party": cust.name if cust else "",
+            "date": p.payment_date.isoformat() if p.payment_date else None,
+            "amount": float(p.amount or 0),
+            "status": "paid",
+            "method": p.payment_mode or "",
         })
 
     # Recent production
-    productions = db.query(ProductionEntry).filter(ProductionEntry.is_archived == False).order_by(ProductionEntry.id.desc()).limit(limit).all()  # noqa: E712
+    q = db.query(ProductionEntry).filter(ProductionEntry.is_archived == False)  # noqa: E712
+    if fdate:
+        q = q.filter(ProductionEntry.created_at >= fdate)
+    if tdate:
+        q = q.filter(ProductionEntry.created_at <= tdate)
+    productions = q.order_by(ProductionEntry.id.desc()).limit(limit).all()
     for prod in productions:
+        product = prod.product
         activities.append({
             "type": "production",
             "id": prod.id,
             "title": f"Production {prod.production_number}",
-            "subtitle": prod.product.name if prod.product else "",
+            "reference": prod.production_number,
+            "party": product.name if product else "",
             "date": prod.created_at.isoformat() if prod.created_at else None,
             "amount": 0,
+            "status": "",
+            "method": "",
         })
 
     # Sort by date desc

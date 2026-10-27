@@ -134,7 +134,16 @@ def create_challan(challan, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Customer not found")
 
     from backend.app.services.document_sequence import next_challan_number
-    challan_number = next_challan_number(db)
+    manual_number = (ch.get("challan_number") or "").strip()
+    if manual_number:
+        existing = db.query(SalesChallan).filter(
+            func.lower(SalesChallan.challan_number) == manual_number.lower()
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Challan number already exists")
+        challan_number = manual_number
+    else:
+        challan_number = next_challan_number(db)
 
     challan_date = ch.get("challan_date")
     if isinstance(challan_date, str):
@@ -377,6 +386,72 @@ def update_challan_status(challan_id: int, payload: dict, request: Request, db: 
     return c
 
 
+# Challan reopen
+@router.put("/challans/{challan_id}/reopen")
+def reopen_challan(challan_id: int, request: Request, db: Session = Depends(get_db)):
+    """Reopen a closed challan, restoring the status the books imply.
+
+    Never moves stock or money. Refused when not closed (400) or archived (409).
+    """
+    c = db.query(SalesChallan).filter(SalesChallan.id == challan_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Challan not found")
+    if c.status != ChallanStatus.CLOSED:
+        raise HTTPException(status_code=400, detail="Challan is not closed")
+    if c.is_archived:
+        raise HTTPException(status_code=409, detail="Challan is archived")
+    reason = _change_reason(request)
+    old_status = c.status
+    # create_customer_payment reduces outstanding_amount but never sets paid_amount,
+    # so infer the pre-close status from outstanding_amount + payment presence.
+    if c.outstanding_amount and c.outstanding_amount == c.total_price:
+        new_status = ChallanStatus.CONFIRMED
+    elif c.outstanding_amount and c.outstanding_amount > 0:
+        new_status = ChallanStatus.PARTIALLY_PAID
+    elif c.total_price and c.total_price > 0:
+        # outstanding_amount == 0 with a positive total: fully paid via payments,
+        # or a draft closed directly. Payments distinguish the two.
+        has_payments = db.query(CustomerPayment).filter(
+            CustomerPayment.challan_id == c.id,
+        ).first()
+        new_status = ChallanStatus.PAID if has_payments else ChallanStatus.DRAFT
+    else:
+        new_status = ChallanStatus.DRAFT
+    c.status = new_status
+    _audit(db, request, "sales", "reopen", record=c, record_type="sales_challan", old_values={"status": old_status.value}, new_values={"status": new_status.value}, notes=reason)
+    db.commit()
+    db.refresh(c)
+    return _challan_dict(c)
+
+
+# Challan permanent delete (drafts only, cleanly refused when blocked)
+@router.delete("/challans/{challan_id}/permanent")
+def delete_challan_permanently(challan_id: int, request: Request, db: Session = Depends(get_db)):
+    """Permanently delete a draft challan and its items.
+
+    Refused with 409 when an invoice, payment, or stock posting blocks it.
+    """
+    c = db.query(SalesChallan).filter(SalesChallan.id == challan_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Challan not found")
+    if c.status != ChallanStatus.DRAFT:
+        raise HTTPException(status_code=409, detail="Only draft challans can be deleted")
+    invoice = db.query(SalesInvoice).filter(SalesInvoice.challan_id == challan_id).first()
+    if invoice:
+        raise HTTPException(status_code=409, detail=f"Cannot delete: invoice {invoice.invoice_number} exists for this challan")
+    if db.query(CustomerPayment).filter(CustomerPayment.challan_id == challan_id).first():
+        raise HTTPException(status_code=409, detail="Cannot delete: payments exist for this challan")
+    if db.query(FinishedProductStockMovement).filter(
+        FinishedProductStockMovement.reference_type == "sales_challan",
+        FinishedProductStockMovement.reference_id == challan_id,
+    ).first():
+        raise HTTPException(status_code=409, detail="Cannot delete: stock movements exist for this challan")
+    items_removed = db.query(SalesChallanItem).filter(SalesChallanItem.challan_id == challan_id).count()
+    db.delete(c)
+    db.commit()
+    return {"status": "deleted", "items_removed": items_removed}
+
+
 # Sales Invoice
 @router.post("/sales-invoices", response_model=SalesInvoiceSchema)
 def create_sales_invoice(payload: dict, request: Request, db: Session = Depends(get_db)):
@@ -474,6 +549,7 @@ def create_customer_payment(payload: dict, request: Request, db: Session = Depen
     
     # Update outstanding amount
     ch.outstanding_amount = max(D("0"), (ch.outstanding_amount or D("0")) - amount)
+    ch.paid_amount = (ch.paid_amount or D("0")) + amount
     if ch.outstanding_amount == D("0"):
         ch.status = ChallanStatus.PAID
     elif ch.outstanding_amount < ch.total_price:

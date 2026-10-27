@@ -355,6 +355,9 @@ _backup_dir = backup_routes._backup_dir
 
 # Sales challan status alias (test uses set_challan_status)
 set_challan_status = sales.update_challan_status
+reopen_challan = sales.reopen_challan
+delete_challan_permanently = sales.delete_challan_permanently
+create_payment = sales.create_customer_payment
 
 # Products route aliases
 get_product_formulation = products.get_product_formulation

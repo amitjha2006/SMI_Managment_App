@@ -98,6 +98,16 @@ window.UI = (function () {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+      // Proactive hint for the most common blocked-edit cause: Editor Mode is
+      // off and every PUT/PATCH/DELETE needs it on (rbac_guard in main.py).
+      if (response.status === 403 && ["PUT", "PATCH", "DELETE"].includes(method)) {
+        const editorOff = window.App && window.App.isEditorModeOn && !window.App.isEditorModeOn();
+        if (editorOff && window.UI && window.UI.notify) {
+          window.UI.notify(
+            "Editor Mode is off — switch it on in the header before editing or deleting records.",
+            "warning", 7000);
+        }
+      }
       throw new Error(formatError(data, `Request failed (${response.status})`));
     }
     return data;

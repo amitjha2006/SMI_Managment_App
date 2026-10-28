@@ -60,7 +60,8 @@ def update_raw_material(material_id: int, update: RawMaterialUpdate, request: Re
     if not m:
         raise HTTPException(status_code=404, detail="Raw material not found")
     _reject_if_archived(m, "raw material")
-    reason = _change_reason(request)
+    params = getattr(request, "query_params", None)
+    reason = (params.get("reason") or "").strip() if params else ""
     old = {"name": m.name, "category_id": m.category_id, "unit": m.unit, "current_stock": m.current_stock, "threshold_stock": m.threshold_stock, "watch_stock": m.watch_stock, "hsn_code": m.hsn_code}
     data = update.dict(exclude_unset=True)
     for field, value in data.items():

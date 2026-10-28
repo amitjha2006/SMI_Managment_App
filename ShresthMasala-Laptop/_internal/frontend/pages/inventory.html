@@ -1001,6 +1001,7 @@
       });
       msg.textContent = "Product details saved.";
       msg.style.color = "var(--color-success)";
+      window.UI.notify("Product details saved.", "success", 3000);
       await loadProducts();
     } catch (e) {
       msg.textContent = e.message || "Save failed.";

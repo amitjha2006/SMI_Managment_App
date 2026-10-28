@@ -122,19 +122,21 @@ def update_product(product_id: int, product: ProductUpdate, request: Request, db
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
     _reject_if_archived(p, "product")
-    reason = _change_reason(request)
+    params = getattr(request, "query_params", None)
+    reason = (params.get("reason") or "").strip() if params else ""
     old = {"name": p.name, "category_id": p.category_id, "hsn_code": p.hsn_code, "gst_rate": p.gst_rate, "base_rate_per_kg": p.base_rate_per_kg}
     data = product.dict(exclude_unset=True)
     # Handle category: frontend may send category_id (existing) or category (new name)
     # The 'category' property is read-only, so we must not try to set it.
     category_val = data.pop("category", None)
     if isinstance(category_val, str) and category_val.strip():
-        # New category name provided - look it up
+        # New category name provided - resolve to (or create) a real row.
         cat = db.query(ProductCategory).filter(ProductCategory.name == category_val.strip()).first()
-        if cat:
-            data["category_id"] = cat.id
-        else:
-            raise HTTPException(status_code=400, detail=f"Category '{category_val}' not found")
+        if not cat:
+            cat = ProductCategory(name=category_val.strip())
+            db.add(cat)
+            db.flush()
+        data["category_id"] = cat.id
     # If category_val is None/null, ignore it - category_id will be used if provided
     
     for field, value in data.items():
@@ -175,7 +177,16 @@ def restore_product(product_id: int, request: Request, db: Session = Depends(get
 # Product categories
 @router.get("/product-categories", response_model=list[ProductCategorySchema])
 def list_product_categories(db: Session = Depends(get_db)):
-    return db.query(ProductCategory).order_by(ProductCategory.name).all()
+    counts = dict(
+        db.query(Product.category_id, func.count(Product.id))
+        .filter(Product.is_active == True)  # noqa: E712
+        .group_by(Product.category_id)
+        .all()
+    )
+    cats = db.query(ProductCategory).order_by(ProductCategory.name).all()
+    for c in cats:
+        c.product_count = counts.get(c.id, 0)
+    return cats
 
 
 @router.post("/product-categories", response_model=ProductCategorySchema)

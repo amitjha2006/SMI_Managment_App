@@ -283,6 +283,10 @@ window.App = (function () {
   }
 
   function navigate() {
+    // No data pages until signed in: keep the login screen visible and never
+    // fetch /products etc. with a 401 before the user has a session.
+    if (window.Auth && !window.Auth.getToken()) return;
+
     const raw = window.location.hash ? window.location.hash.replace("#", "") : defaultRoute;
     const clean = raw.split("?")[0] || "/";
     const seg = clean.split("/").pop() || "dashboard";

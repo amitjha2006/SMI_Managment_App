@@ -735,7 +735,7 @@ body { display: flex; min-height: 100vh; }
 
 /* Toast notifications — enhanced with actions */
 #toast-container {
-  position: fixed; bottom: 24px; right: 24px; z-index: 999;
+  position: fixed; top: 24px; right: 24px; z-index: 2000;
   display: flex; flex-direction: column; gap: 10px;
   pointer-events: none; /* clicks pass through to buttons inside */
 }

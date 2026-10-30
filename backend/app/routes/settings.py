@@ -278,21 +278,31 @@ def update_email_settings(payload: dict, request: Request, db: Session = Depends
 
 @router.post("/settings/email/preview")
 def preview_email(payload: dict, request: Request, db: Session = Depends(get_db)):
-    """Preview an email template with sample data."""
+    """Preview an email template with sample data, or a daily report for selected sections."""
     template = (payload or {}).get("template")
-    if not template:
-        raise HTTPException(status_code=400, detail="template required")
-    # Simple template rendering - replace {{variable}} with sample values
-    sample = {
-        "company_name": "Shresth Masala Industry",
-        "challan_number": "CH-2026-0042",
-        "customer_name": "Sample Customer",
-        "date": datetime.now().strftime("%d-%m-%Y"),
-        "total_amount": "1,23,456.00",
-    }
-    for key, val in sample.items():
-        template = template.replace(f"{{{{{key}}}}}", val)
-    return {"preview": template}
+    sections = (payload or {}).get("sections")
+    if template:
+        # Simple template rendering - replace {{variable}} with sample values
+        sample = {
+            "company_name": "Shresth Masala Industry",
+            "challan_number": "CH-2026-0042",
+            "customer_name": "Sample Customer",
+            "date": datetime.now().strftime("%d-%m-%Y"),
+            "total_amount": "1,23,456.00",
+        }
+        for key, val in sample.items():
+            template = template.replace(f"{{{{{key}}}}}", val)
+        return {"preview": template}
+    if sections:
+        from backend.app.routes.reports import _build_daily_report
+        subject, text, html_body = _build_daily_report(db, sections)
+        return {
+            "subject": subject,
+            "to": "(recipients)",
+            "body": text,
+            "html": html_body,
+        }
+    raise HTTPException(status_code=400, detail="template required")
 
 
 @router.post("/settings/email/test")

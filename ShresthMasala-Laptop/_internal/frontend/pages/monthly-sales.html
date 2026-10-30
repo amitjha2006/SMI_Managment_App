@@ -9,12 +9,12 @@
       <button class="btn btn-export btn-sm" onclick="window.print()">Print / PDF</button>
     </div>
   </div>
-  <div class="form-row" style="align-items:flex-end; max-width:640px;">
+  <div class="form-row" style="align-items:flex-end; max-width:960px;">
     <div class="form-group"><label>Year</label><select id="ms-year" onchange="loadPivot()"></select></div>
     <label style="display:flex; align-items:center; gap:6px; font-size:13px; padding-bottom:9px; cursor:pointer; white-space:nowrap;">
       <input id="ms-fy" type="checkbox" onchange="toggleFyMode()" /> FY (Apr–Mar)
     </label>
-    <div class="form-group" style="position:relative;"><label>Search Product</label><input id="ms-search" type="search" placeholder="Type product name…" autocomplete="off" oninput="renderPivot(); renderSuggest();" onfocus="renderSuggest();" onkeydown="if(event.key==='Escape'){hideSuggest();}" onblur="setTimeout(hideSuggest, 150)" /><div id="ms-suggest" style="display:none; position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--color-border); border-radius:6px; margin-top:2px; max-height:220px; overflow:auto; z-index:50; box-shadow:0 8px 24px rgba(0,0,0,0.12);"></div></div>
+    <div class="form-group" style="position:relative; flex:2;"><label>Search Product</label><input id="ms-search" type="search" placeholder="Type product name…" autocomplete="off" oninput="renderPivot(); renderSuggest();" onfocus="renderSuggest();" onkeydown="if(event.key==='Escape'){hideSuggest();}" onblur="setTimeout(hideSuggest, 150)" class="search-wide" /><div id="ms-suggest" style="display:none; position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--color-border); border-radius:6px; margin-top:2px; max-height:220px; overflow:auto; z-index:50; box-shadow:0 8px 24px rgba(0,0,0,0.12);"></div></div>
     <div class="form-group"><label>Category</label><select id="ms-cat" onchange="renderPivot(); renderSuggest();" title="Show only products in this category"><option value="">All categories</option></select></div>
     <div class="form-group" style="align-self:flex-end;"><button class="btn btn-secondary btn-sm" type="button" onclick="resetMonthlySalesFilters()" title="Clear search and category (the year stays)">↺ Reset</button></div>
   </div>

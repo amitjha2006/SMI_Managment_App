@@ -502,6 +502,11 @@ body { display: flex; min-height: 100vh; }
   box-shadow: 0 0 0 3px var(--color-danger-soft);
 }
 
+/* Wide search boxes — product / raw-material lookups need room for long names.
+   min-width prevents names being truncated; no flex:1 so boxes only grow when
+   their flex-group gives them room (e.g. monthly-sales uses flex:2). */
+.search-wide { min-width: 220px; }
+
 .form-row { display: flex; gap: 16px; }
 .form-row .form-group { flex: 1; }
 

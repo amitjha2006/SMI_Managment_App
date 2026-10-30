@@ -87,3 +87,77 @@ Backups live in `data\backups\` (manual + automatic `.db` copies).
 - Never mix: a package folder (empty DB) and a live `data\` folder look
   identical — check **Dashboard → Inventory Snapshot** after any move to
   confirm you see your real figures.
+
+---
+
+## Part D — Packaged .exe installation (Windows 10 and Windows 11)
+
+This part is for running the **pre-built .exe** (no Python, no source code
+needed on the target machine).
+
+### What's in the package
+
+```
+ShresthMasala-Laptop\
+  ShresthMasalaIndustry.exe   (the app)
+  _internal\                  (bundled backend + frontend)
+    frontend\                 (static HTML/JS/CSS pages)
+  run-app.bat                 (double-click launcher)
+  run-server.bat              (server-only mode)
+  run-browser.bat             (open in browser)
+  HELP.txt                    (quick reference)
+  data\                       (created on first run — your database lives here)
+```
+
+### Step-by-step install
+
+1. **Copy the folder to the target PC.**
+   Plug in the USB drive, copy the whole `ShresthMasala-Laptop` folder to the
+   new laptop, e.g. `C:\ShresthMasala-Laptop\`. Keep all files together.
+
+2. **Install Microsoft Edge WebView2 Runtime (required once).**
+   The app uses WebView2 to render its window. On Windows 10 and 11 it is
+   usually pre-installed, but if the window stays blank:
+   - Download: https://aka.ms/WebView2Bootstrapper
+   - Run the installer, then restart the app.
+   - Verify: `edge://version` in Edge shows WebView2 version.
+
+3. **Start the app.**
+   Double-click **`ShresthMasalaIndustry.exe`** (or `run-app.bat`).
+   The first launch may take 10–20 seconds while the local server starts.
+
+4. **First run ever: register an admin account.**
+   The database is empty. Click **Register**, create your `admin` account,
+   then sign in. Add staff later on the Users page.
+
+5. **Masters, in this order:**
+   Customers → Suppliers → Raw Materials → Products → Employees.
+   Shortcut: use the **Import** page with `templates\sample_*.xlsx`.
+
+### Where your data lives
+
+- Database: `C:\ShresthMasala-Laptop\data\masala_factory.db` (next to the exe)
+- Backups: `C:\ShresthMasala-Laptop\data\backups\`
+- App log (diagnostics): `C:\ShresthMasala-Laptop\app.log`
+  - If the folder next to the exe isn't writable, the log falls back to
+    `%LOCALAPPDATA%\ShresthMasala\app.log`
+
+### Where your data lives
+
+### Updating to a new version
+
+1. Close the app (`Get-Process ShresthMasalaIndustry* | Stop-Process`).
+2. Replace `ShresthMasalaIndustry.exe` and `_internal\` with the new build.
+3. **Never touch `data\`** — your database is preserved automatically.
+4. Restart the app.
+
+### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| Window blank / won't open | Install WebView2 Runtime (step 2 above). |
+| "Port already in use" | Close any other copy of the app, then retry. |
+| `app.log` not created | The app now falls back to `%LOCALAPPDATA%\ShresthMasala\app.log`. |
+| Database errors | Never edit `data\masala_factory.db` by hand. Work on a copy. |
+| App won't start on Windows 10 | Ensure you're on Windows 10 version 1607 or later (WebView2 requirement). |
+

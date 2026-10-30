@@ -29,20 +29,25 @@ if getattr(sys, "frozen", False):
     # app.log on every launch.
     os.environ.setdefault("PYWEBVIEW_LOG", "warning")
     # Windowed apps have no console: redirect stray output to a log file so
-    # a broken pipe can never silently kill the server thread.
-    try:
-        if sys.stdout is None or not sys.stdout.isatty():
-            # No `with` block: the log stays open for the life of the app,
-            # collecting every stray print into app.log next to the .exe.
-            _log = (Path(sys.executable).parent / "app.log").open(  # noqa: SIM115
-                "a",
-                buffering=1,
-                encoding="utf-8",
-                errors="replace",
-            )
-            sys.stdout = sys.stderr = _log
-    except Exception:
-        pass
+    # a broken pipe can never silently kill the server thread. Try next to
+    # the exe first; on some machines (read-only Program Files, etc.) fall
+    # back to a user-writable AppData location so diagnostics are never lost.
+    _log_path = None
+    for candidate in (
+        Path(sys.executable).parent / "app.log",
+        Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ShresthMasala" / "app.log",
+    ):
+        try:
+            candidate.parent.mkdir(parents=True, exist_ok=True)
+            _log = candidate.open("a", buffering=1, encoding="utf-8", errors="replace")
+            _log_path = candidate
+            break
+        except Exception:
+            continue
+    if _log is not None:
+        sys.stdout = sys.stderr = _log
+    else:
+        print("[startup] WARNING: could not open app.log anywhere", file=sys.stderr)
 
 import uvicorn  # noqa: E402
 import webview  # noqa: E402

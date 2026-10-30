@@ -5,7 +5,7 @@ a = Analysis(
     ['main_window.py'],
     pathex=[],
     binaries=[],
-    datas=[('frontend', 'frontend')],
+    datas=[('frontend', 'frontend'), ('VERSION', '.')],
     hiddenimports=['fastapi', 'uvicorn', 'sqlalchemy', 'pydantic', 'pydantic_settings', 'webview', 'openpyxl', 'reportlab', 'PIL', 'jose', 'passlib', 'passlib.handlers.pbkdf2', 'multipart', 'uharfbuzz'],
     hookspath=[],
     hooksconfig={},

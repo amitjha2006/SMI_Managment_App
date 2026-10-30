@@ -33,8 +33,20 @@ def system_info():
     import sys
     import platform
     import os
+    from pathlib import Path
     from backend.app.core.database import engine
+    # App version from repo-root VERSION file (next to exe when frozen)
+    app_version = "0.1.0"
+    for cand in (Path.cwd() / "VERSION", Path(sys.executable).parent / "VERSION"):
+        try:
+            v = cand.read_text(encoding="utf-8").strip()
+            if v:
+                app_version = v
+                break
+        except Exception:
+            pass
     return {
+        "app_version": app_version,
         "python_version": sys.version,
         "platform": platform.platform(),
         "database_url": str(engine.url).replace(str(engine.url.password or ""), "***"),

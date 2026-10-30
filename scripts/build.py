@@ -186,6 +186,8 @@ def main():
         "--noconfirm",
         "--add-data",
         "frontend;frontend",
+        "--add-data",
+        "VERSION;.",
         "--hidden-import",
         "fastapi",
         "--hidden-import",
@@ -254,6 +256,12 @@ def main():
     if result.returncode == 0:
         ship_extras(root, dist_path)
         update_cache_buster(root, dist_path)
+        # Bundle VERSION next to the exe so /system/info can report the version
+        try:
+            shutil.copy2(root / "VERSION", dist_path / APP_NAME / "VERSION")
+            print("Bundled VERSION next to the executable")
+        except Exception as exc:
+            print(f"Could not bundle VERSION: {exc}")
 
     if result.returncode == 0:
         print(f"\nBuild complete: {dist_path / APP_NAME / f'{APP_NAME}.exe'}")

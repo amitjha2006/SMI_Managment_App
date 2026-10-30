@@ -179,6 +179,17 @@
         }
       })
       .catch(() => {}); // Silent fail - not critical
+
+    // Fetch app version and update the header version badge
+    fetch("/system/info")
+      .then(r => r.json())
+      .then(data => {
+        const el = document.querySelector(".version");
+        if (el && data.app_version) {
+          el.textContent = "v" + data.app_version;
+        }
+      })
+      .catch(() => {}); // Silent fail - not critical
   </script>
 </body>
 </html>

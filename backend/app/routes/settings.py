@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from datetime import datetime
 
+from backend.app.core.config import settings
 from backend.app.core.database import get_db
 from backend.app.models import (
     ApplicationSetting,
@@ -118,9 +119,25 @@ def update_backup_settings(payload: dict, request: Request, db: Session = Depend
 @router.get("/settings/sales-invoice")
 def get_sales_invoice_settings(db: Session = Depends(get_db)):
     setting = db.query(ApplicationSetting).filter(ApplicationSetting.key == "sales_invoice").first()
-    if not setting:
-        return {"prefix": "SI", "next_number": 1, "terms": "", "footer_id": None}
-    return setting.value
+    value = setting.value if setting else {}
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except Exception:
+            value = {}
+    if not isinstance(value, dict):
+        value = {}
+    # Include company GSTIN from the company.gstin individual key so the
+    # frontend can show the GSTIN-missing warning accurately even when the
+    # sales_invoice composite key has never been saved.
+    company = db.query(ApplicationSetting).filter(ApplicationSetting.key == "company.gstin").first()
+    value.setdefault("company_gstin", company.value if company and company.value else "")
+    return {
+        "invoice_from_date": value.get("invoice_from_date", ""),
+        "invoice_prefix": value.get("invoice_prefix", "INV"),
+        "supply_type": value.get("supply_type", "intra"),
+        "company_gstin": value.get("company_gstin", ""),
+    }
 
 
 @router.put("/settings/sales-invoice")
@@ -130,12 +147,11 @@ def update_sales_invoice_settings(payload: dict, request: Request, db: Session =
     if not setting:
         setting = ApplicationSetting(key="sales_invoice", value={})
         db.add(setting)
-    setting.value = {
-        "prefix": payload.get("prefix", "SI"),
-        "next_number": payload.get("next_number", 1),
-        "terms": payload.get("terms", ""),
-        "footer_id": payload.get("footer_id"),
-    }
+    setting.value = json.dumps({
+        "invoice_from_date": payload.get("invoice_from_date", ""),
+        "invoice_prefix": payload.get("invoice_prefix", "INV"),
+        "supply_type": payload.get("supply_type", "intra"),
+    })
     _audit(db, request, "settings", "sales_invoice_update", record=setting, record_type="application_setting", new_values=setting.value)
     db.commit()
     return setting.value
@@ -145,9 +161,27 @@ def update_sales_invoice_settings(payload: dict, request: Request, db: Session =
 @router.get("/settings/company")
 def get_company_settings(db: Session = Depends(get_db)):
     setting = db.query(ApplicationSetting).filter(ApplicationSetting.key == "company").first()
-    if not setting:
-        return {"name": "Shresth Masala Industry", "address": "", "phone": "", "email": "", "gstin": "", "logo_path": ""}
-    return setting.value
+    value = json.loads(setting.value) if (setting and setting.value and isinstance(setting.value, str)) else {}
+    if not isinstance(value, dict):
+        value = {}
+    # Data may be split across two formats: a composite 'company' key and/or
+    # individual 'company.*' keys. Individual keys hold the real values; merge
+    # them into the composite result so the frontend always sees saved data.
+    for k in ("name", "address", "phone", "email", "gstin", "logo_path", "terms"):
+        individual = db.query(ApplicationSetting).filter(ApplicationSetting.key == f"company.{k}").first()
+        if individual and individual.value and not value.get(f"company.{k}"):
+            value[f"company.{k}"] = individual.value
+    # Always return the full field set even when nothing is stored yet.
+    # Frontend reads d["company.name"] etc. (company.* keys).
+    return {
+        "company.name": value.get("company.name", "Shresth Masala Industry"),
+        "company.address": value.get("company.address", ""),
+        "company.phone": value.get("company.phone", ""),
+        "company.email": value.get("company.email", ""),
+        "company.gstin": value.get("company.gstin", ""),
+        "company.logo_path": value.get("company.logo_path", ""),
+        "company.terms": value.get("company.terms", ""),
+    }
 
 
 @router.put("/settings/company")

@@ -28,7 +28,7 @@
   <div id="auth-screen">
     <div class="auth-card">
       <div class="auth-brand"><img src="/frontend/assets/logo.png?v=4" alt="Shresth Masala logo" class="brand-logo" onerror="this.style.display='none'" />
-        <div><h2>Shresth Masala Industry</h2><span class="brand-sub">Management System</span></div>
+        <div><h2>Shresth Masala Industry</h2><span class="brand-sub">Management System</span><span class="auth-version" id="auth-version"></span></div>
       </div>
       <div class="auth-tabs">
         <button id="tab-login" class="auth-tab active" type="button">Sign In</button>
@@ -154,7 +154,7 @@
   <!-- Notification Toast -->
   <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
-  <script src="/frontend/js/components.js?v=17"></script>
+  <script src="/frontend/js/components.js?v=20"></script>
   <script src="/frontend/js/auth.js?v=5"></script>
   <script src="/frontend/js/app.js?v=6"></script>
   <script>
@@ -181,15 +181,17 @@
       .catch(() => {}); // Silent fail - not critical
 
     // Fetch app version and update the header version badge
-    fetch("/system/info")
-      .then(r => r.json())
-      .then(data => {
-        const el = document.querySelector(".version");
-        if (el && data.app_version) {
-          el.textContent = "v" + data.app_version;
-        }
-      })
-      .catch(() => {}); // Silent fail - not critical
+    window.UI.api("/system/info").then(data => {
+      const el = document.querySelector(".version");
+      if (el && data.version) {
+        el.textContent = "v" + data.version;
+      }
+      // Also show the version on the login/auth screen
+      const av = document.getElementById("auth-version");
+      if (av && data.version) {
+        av.textContent = "v" + data.version;
+      }
+    }).catch(() => {}); // Silent fail - not critical
   </script>
 </body>
 </html>

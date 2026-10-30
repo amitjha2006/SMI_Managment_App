@@ -252,6 +252,7 @@ var REP_SECTION_LABELS = [
 ];
 
 (function(){
+  let currentReleaseUrl = "";
   function fmtSize(bytes) {
     bytes = parseInt(bytes) || 0;
     if (bytes < 1024) return bytes + " B";
@@ -288,14 +289,18 @@ var REP_SECTION_LABELS = [
       if (!silent) { checking.textContent = ""; }
       if (d.update_available) {
         const notes = (d.release_notes || "").slice(0, 200);
+        currentReleaseUrl = d.release_url || "";
         const downloadDisabled = document.getElementById("update-downloading")?.textContent === "Downloading…";
+        const hasAsset = !!d.asset_url;
         el.innerHTML =
           "<strong style='color:var(--color-danger);'>Update available!</strong> " +
           "You are on v" + d.current_version + ", latest is v" + d.latest_version + ".<br>" +
           (notes ? notes + "<br>" : "") +
-          "<a href='" + d.release_url + "' target='_blank' rel='noopener' style='color:var(--color-primary); text-decoration:underline;'>View release notes</a><br>" +
-          "<button class='btn btn-primary btn-sm' onclick=\"downloadUpdate('" + (d.asset_url || "") + "')\" " +
-          (downloadDisabled ? "disabled" : "") + ">Download update</button> " +
+          "<a href='" + d.release_url + "' target='_blank' rel='noopener' style='color:var(--color-primary); text-decoration:underline;'>View release notes</a>" +
+          (hasAsset ? " | <a href='" + d.asset_url + "' target='_blank' rel='noopener' style='color:var(--color-primary); text-decoration:underline;'>Direct download</a>" : "") + "<br>" +
+          (hasAsset
+            ? "<button class='btn btn-primary btn-sm' onclick=\"downloadUpdate('" + d.asset_url + "')\" " + (downloadDisabled ? "disabled" : "") + ">Silent install (download + restart)</button> "
+            : "") +
           "<span id='update-downloading' style='font-size:12px; color:var(--color-text-muted); margin-left:8px;'></span>" +
           "<button class='btn btn-sm btn-secondary' onclick=\"this.parentElement.style.display='none'\">Dismiss</button>";
         el.style.borderLeft = "4px solid var(--color-danger)";
@@ -331,7 +336,9 @@ var REP_SECTION_LABELS = [
       }
     } catch (e) {
       status.textContent = "";
-      window.UI.notify(e.message || "Download failed.", "error");
+      // Fall back to opening the release page directly
+      window.UI.notify("Silent install failed — opening release page instead.", "warning");
+      try { window.open(currentReleaseUrl, "_blank"); } catch (_) {}
     }
   }
 
@@ -344,6 +351,8 @@ var REP_SECTION_LABELS = [
   loadSalesInvoiceSettings();
   loadSessionSettings();
   paintSectionBoxes();
+  window.checkForUpdates = checkForUpdates;
+  window.downloadUpdate = downloadUpdate;
 })();
 
 async function loadSalesInvoiceSettings() {
@@ -425,12 +434,12 @@ async function loadCompanySettings() {
   }
   try {
     const d = await window.UI.api("/settings/company");
-    document.getElementById("co-name").value = d.name || "";
-    document.getElementById("co-address").value = d.address || "";
-    document.getElementById("co-gstin").value = d.gstin || "";
-    document.getElementById("co-phone").value = d.phone || "";
-    document.getElementById("co-email").value = d.email || "";
-    document.getElementById("co-terms").value = d.terms || "";
+    document.getElementById("co-name").value = d["company.name"] || "";
+    document.getElementById("co-address").value = d["company.address"] || "";
+    document.getElementById("co-gstin").value = d["company.gstin"] || "";
+    document.getElementById("co-phone").value = d["company.phone"] || "";
+    document.getElementById("co-email").value = d["company.email"] || "";
+    document.getElementById("co-terms").value = d["company.terms"] || "";
     // Standing reminder of how many existing documents will not pick this up.
     const stale = d.challans_without_own_terms || 0;
     const note = document.getElementById("co-terms-note");
@@ -453,12 +462,12 @@ async function saveCompanySettings(event) {
   if (!__release) return;
   const msg = document.getElementById("co-msg");
   const body = {
-    name: document.getElementById("co-name").value,
-    address: document.getElementById("co-address").value,
-    gstin: document.getElementById("co-gstin").value.trim().toUpperCase(),
-    phone: document.getElementById("co-phone").value,
-    email: document.getElementById("co-email").value,
-    terms: document.getElementById("co-terms").value,
+    "company.name": document.getElementById("co-name").value,
+    "company.address": document.getElementById("co-address").value,
+    "company.gstin": document.getElementById("co-gstin").value.trim().toUpperCase(),
+    "company.phone": document.getElementById("co-phone").value,
+    "company.email": document.getElementById("co-email").value,
+    "company.terms": document.getElementById("co-terms").value,
   };
   try {
     const d = await window.UI.api("/settings/company", { method: "PUT", body });

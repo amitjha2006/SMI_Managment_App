@@ -1,4 +1,5 @@
 """Product, category, packaging, formulation, workflow routes"""
+import json
 import re
 
 from decimal import Decimal
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
 from backend.app.models import (
+    ApplicationSetting,
     HSNCode,
     PackagingSize,
     Product,
@@ -281,19 +283,65 @@ def suggest_hsn_code(kind: str = "product", q: str = "", db: Session = Depends(g
 # Print footers
 @router.get("/print-footers")
 def list_print_footers(db: Session = Depends(get_db)):
-    return db.query(PrintFooter).order_by(PrintFooter.id.desc()).all()
+    from backend.app.models import SalesChallan
+    footers = db.query(PrintFooter).order_by(PrintFooter.id.desc()).all()
+    # Determine which footer is the default from sales settings (sales.footer_id).
+    default_footer_id = None
+    sales_setting = (
+        db.query(ApplicationSetting).filter(ApplicationSetting.key == "sales").first()
+    )
+    if sales_setting and sales_setting.value:
+        try:
+            sales_val = (
+                json.loads(sales_setting.value)
+                if isinstance(sales_setting.value, str)
+                else sales_setting.value
+            )
+            if isinstance(sales_val, dict):
+                default_footer_id = sales_val.get("footer_id")
+        except Exception:
+            default_footer_id = None
+    out = []
+    for f in footers:
+        try:
+            cc = (
+                db.query(SalesChallan)
+                .filter(
+                    SalesChallan.footer_id == f.id,
+                    SalesChallan.is_archived == False,  # noqa: E712
+                )
+                .count()
+            )
+        except Exception:
+            cc = 0
+        out.append(
+            {
+                "id": f.id,
+                "name": f.name,
+                "body": f.body,
+                "is_active": f.is_active,
+                # Only the footer matching sales.footer_id is the default.
+                "is_default": f.id == default_footer_id,
+                "created_at": f.created_at.isoformat() if f.created_at else None,
+                "updated_at": f.updated_at.isoformat() if f.updated_at else None,
+                "challan_count": cc,
+            }
+        )
+    return {"footers": out}
 
 
 @router.post("/print-footers")
 def create_print_footer(payload: dict, request: Request, db: Session = Depends(get_db)):
-    text = (payload or {}).get("text")
-    if not text:
-        raise HTTPException(status_code=400, detail="text required")
-    footer = PrintFooter(text=text, is_default=(payload or {}).get("is_default", False))
-    if footer.is_default:
-        db.query(PrintFooter).filter(PrintFooter.is_default == True).update({PrintFooter.is_default: False})  # noqa: E712
+    name = (payload or {}).get("name")
+    body = (payload or {}).get("body")
+    if not name:
+        raise HTTPException(status_code=400, detail="footer name required")
+    footer = PrintFooter(name=name, body=body, is_active=True)
+    if (payload or {}).get("is_default"):
+        db.query(PrintFooter).filter(PrintFooter.is_active == True).update({PrintFooter.is_active: False})  # noqa: E712
+        footer.is_active = True
     db.add(footer)
-    _audit(db, request, "settings", "footer_create", record=footer, record_type="print_footer", new_values={"text": text})
+    _audit(db, request, "settings", "footer_create", record=footer, record_type="print_footer", new_values={"name": name, "body": body})
     db.commit()
     db.refresh(footer)
     return footer
@@ -304,15 +352,18 @@ def update_print_footer(footer_id: int, payload: dict, request: Request, db: Ses
     footer = db.query(PrintFooter).filter(PrintFooter.id == footer_id).first()
     if not footer:
         raise HTTPException(status_code=404, detail="Footer not found")
-    text = (payload or {}).get("text")
-    is_default = (payload or {}).get("is_default")
-    if text is not None:
-        footer.text = text
-    if is_default is not None:
-        if is_default:
-            db.query(PrintFooter).filter(PrintFooter.is_default == True).update({PrintFooter.is_default: False})  # noqa: E712
-        footer.is_default = is_default
-    _audit(db, request, "settings", "footer_update", record=footer, record_type="print_footer", new_values={"text": footer.text, "is_default": footer.is_default})
+    name = (payload or {}).get("name")
+    body = (payload or {}).get("body")
+    is_active = (payload or {}).get("is_active")
+    if name is not None:
+        footer.name = name
+    if body is not None:
+        footer.body = body
+    if is_active is not None:
+        if is_active:
+            db.query(PrintFooter).filter(PrintFooter.is_active == True).update({PrintFooter.is_active: False})  # noqa: E712
+        footer.is_active = is_active
+    _audit(db, request, "settings", "footer_update", record=footer, record_type="print_footer", new_values={"name": footer.name, "body": footer.body, "is_active": footer.is_active})
     db.commit()
     return footer
 

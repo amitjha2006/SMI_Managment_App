@@ -296,7 +296,7 @@
       }
       const colDefs = d.columns.map(c => {
         if (c === "date" || c === "payment_date" || c === "invoice_date" || c === "challan_date" || c === "date") {
-          return { key: c, label: crLabel(c), render: v => window.UI.fmtDateTime(v) };
+          return { key: c, label: crLabel(c), render: (v, r) => window.UI.dateWithTime(v, r.created_at) };
         }
         return { key: c, label: crLabel(c) };
       });
@@ -429,7 +429,7 @@
       }
       const colDefs = d.columns.map(c => {
         if (c === "date" || c === "payment_date" || c === "invoice_date" || c === "challan_date" || c === "date") {
-          return { key: c, label: crLabel(c), render: v => window.UI.fmtDateTime(v) };
+          return { key: c, label: crLabel(c), render: (v, r) => window.UI.dateWithTime(v, r.created_at) };
         }
         return { key: c, label: crLabel(c) };
       });

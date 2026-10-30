@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "e476ee8e-dadc-48f0-bc17-959ed2cb1d0d",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\Shresth_Masala_Application_New\\.archify\\architecture-shresth-masala-20261029-150620\\candidate.json",
+  "output": "C:\\Shresth_Masala_Application_New\\.archify\\architecture-shresth-masala-20261029-150620\\shresth-masala-architecture.html",
+  "specification": {
+    "sha256": "2fe0714e85f545ce1349c6b8262cd346f84cba4044f226b35694c905ba33d7b1",
+    "bytes": 4020
+  },
+  "artifact": {
+    "sha256": "bf6482e38dbe3c762121546fc36a6ae77a27ac66c82be19e19459a36eefa9930",
+    "bytes": 767681
+  }
+}

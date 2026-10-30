@@ -610,6 +610,7 @@ async def rbac_guard(request, call_next):
         or path in ("/docs", "/openapi.json", "/redoc", "/favicon.ico")
         or path == "/auth/login"
         or path == "/app/env"
+        or path == "/system/info"
     ):
         return await call_next(request)
     # First-user bootstrap: open registration only when no users exist yet

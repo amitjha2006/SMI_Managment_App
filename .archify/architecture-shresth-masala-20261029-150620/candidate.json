@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Shresth Masala Industry — Application Flow",
+    "output": ".archify/architecture-shresth-masala-20261029-150620/shresth-masala-architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "operator", "type": "external", "label": "Factory Operator", "sublabel": "Browser / desktop window", "icon": "person", "pos": [40, 300], "size": [130, 60] },
+    { "id": "desktop", "type": "frontend", "label": "PyWebView Window", "sublabel": "main_window.py · :8000–8005", "icon": "frontend", "pos": [280, 300], "size": [140, 60] },
+    { "id": "js_bridge", "type": "frontend", "label": "DesktopApi.save_file", "sublabel": "JS bridge for downloads", "icon": "frontend", "pos": [280, 440], "size": [140, 60] },
+    { "id": "api", "type": "backend", "label": "FastAPI Backend", "sublabel": "backend/main.py · app", "icon": "backend", "pos": [530, 300], "size": [130, 60] },
+    { "id": "auth_rbac", "type": "security", "label": "Auth + RBAC Middleware", "sublabel": "rbac_guard · /auth/*", "icon": "security", "pos": [530, 120], "size": [170, 60], "tag": "Editor Mode gate" },
+    { "id": "routes", "type": "backend", "label": "Route Handlers", "sublabel": "backend/app/routes/*.py (14 domains)", "icon": "backend", "pos": [780, 300], "size": [150, 60] },
+    { "id": "services", "type": "backend", "label": "Domain Services", "sublabel": "stock_posting · payroll · excel_import", "icon": "backend", "pos": [695, 440], "size": [230, 60] },
+    { "id": "pdf", "type": "backend", "label": "PDF Export", "sublabel": "reportlab + PIL invoices", "icon": "backend", "pos": [780, 120], "size": [130, 60] },
+    { "id": "backups", "type": "backend", "label": "Auto-Backup Scheduler", "sublabel": "lifespan scheduler → data/backups/", "icon": "clock", "pos": [1060, 120], "size": [150, 60] },
+    { "id": "db", "type": "database", "label": "SQLite Database", "sublabel": "data/masala_factory.db · 58 FKs", "icon": "database", "pos": [1060, 300], "size": [140, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Desktop machine (loopback 127.0.0.1)", "wraps": ["desktop", "js_bridge", "api", "auth_rbac", "routes", "services", "pdf", "backups", "db"], "pad": 28 },
+    { "kind": "security-group", "label": "Auth boundary", "wraps": ["auth_rbac"], "pad": 14 }
+  ],
+  "connections": [
+    { "id": "op-to-desk", "from": "operator", "to": "desktop", "label": "open window" },
+    { "id": "desk-to-api", "from": "desktop", "to": "api", "label": "REST + JWT" },
+    { "id": "desk-to-bridge", "from": "desktop", "to": "js_bridge", "label": "download bytes" },
+    { "id": "bridge-to-op", "from": "js_bridge", "to": "operator", "label": "save-file dialog", "variant": "dashed" },
+    { "id": "api-to-auth", "from": "api", "to": "auth_rbac", "label": "rbac guard", "variant": "security" },
+    { "id": "auth-to-routes", "from": "auth_rbac", "to": "routes", "label": "role gates" },
+    { "id": "routes-to-db", "from": "routes", "to": "db", "label": "SQL queries" },
+    { "id": "routes-to-services", "from": "routes", "to": "services", "label": "domain logic" },
+    { "id": "services-to-db", "from": "services", "to": "db", "label": "writes stock rows" },
+    { "id": "routes-to-pdf", "from": "routes", "to": "pdf", "label": "invoice PDF" },
+    { "id": "backups-to-db", "from": "backups", "to": "db", "label": "copies DB" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Edge", "items": ["Desktop window same-origin; WebView2 ignores blob downloads → DesktopApi.save_file bridge"] },
+    { "dot": "emerald", "title": "Application", "items": ["FastAPI + 14 route domains; services layer", "SQLite with 58 FKs enforced per connection", "IST wall timestamps (_ist_wall), money rounded at flush"] },
+    { "dot": "rose", "title": "Security", "items": ["rbac_guard role floors (viewer / data_entry / challan_entry)", "Editor Mode required for PUT/PATCH/DELETE", "Admin-only prefixes hardcoded in main.py"] }
+  ]
+}

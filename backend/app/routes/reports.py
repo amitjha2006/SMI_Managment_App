@@ -1040,6 +1040,7 @@ def _custom_report_rows(src, wanted, entity_field, entity_value, fdate, tdate, d
                 "quantity": float(it.quantity or 0),
                 "weight_kg": float(it.weight or 0),
                 "amount": float(it.amount or 0),
+                "created_at": ch.created_at.isoformat() if ch.created_at else None,
             })
 
     elif src == "dues":
@@ -1102,6 +1103,7 @@ def _custom_report_rows(src, wanted, entity_field, entity_value, fdate, tdate, d
                 "amount": float(it.amount or 0),
                 "paid": float(inv.paid_amount or 0),
                 "outstanding": float(inv.outstanding_amount or 0),
+                "created_at": inv.created_at.isoformat() if inv.created_at else None,
             })
 
     elif src == "expenses":
@@ -1122,6 +1124,7 @@ def _custom_report_rows(src, wanted, entity_field, entity_value, fdate, tdate, d
                 "description": e.description or "",
                 "amount": float(e.amount or 0),
                 "payee": e.payee or "",
+                "created_at": e.created_at.isoformat() if e.created_at else None,
             })
 
     elif src == "production":
@@ -1151,10 +1154,11 @@ def _custom_report_rows(src, wanted, entity_field, entity_value, fdate, tdate, d
                 "target_kg": float(pe.target_quantity or 0),
                 "actual_kg": float(pe.actual_output or 0),
                 "status": pe.status.value if pe.status else None,
+                "created_at": pe.created_at.isoformat() if pe.created_at else None,
             })
 
     columns = wanted or full_columns
-    rows = [{c: r.get(c) for c in columns} for r in rows]
+    rows = [{**{c: r.get(c) for c in columns}, "created_at": r.get("created_at")} for r in rows]
     amount_total = 0.0
     if "amount" in columns:
         amount_total = round(sum(float(r.get("amount") or 0) for r in rows), 2)

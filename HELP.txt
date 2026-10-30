@@ -58,3 +58,21 @@ The server binds 127.0.0.1 (this PC only) - never expose the port to a
 network; most endpoints have no login wall. To read the database by
 hand: close the app, copy masala_factory.db aside, open the COPY with
 the free DB Browser for SQLite. Never edit the live file directly.
+
+
+ARCHITECTURE ARTIFACT
+---------------------
+A full application architecture diagram is generated as a standalone HTML
+file (quality showcase, ~767 KB):
+
+  .archify\architecture-shresth-masala-20261029-150620\
+    shresth-masala-architecture.html     (the diagram)
+    candidate.json                        (spec/source for regeneration)
+
+Open shresth-masala-architecture.html in any browser. It shows the
+end-to-end flow: Factory Operator -> PyWebView window -> FastAPI backend
+-> Auth/RBAC middleware -> 14 route domains -> domain services ->
+SQLite database + PDF export + auto-backup scheduler.
+
+Diagram type: architecture  |  Quality profile: showcase
+Regenerate by editing candidate.json and re-running Archify.

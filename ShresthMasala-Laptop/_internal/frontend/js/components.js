@@ -201,6 +201,8 @@ window.UI = (function () {
     const day = fmtDay(d);
     const c = asUtcDate(createdIso);
     if (!c || isNaN(c.getTime())) return day;
+    // Hide the time stamp when it's midnight (00:00:00) — no real time to show.
+    if (c.getHours() === 0 && c.getMinutes() === 0 && c.getSeconds() === 0) return day;
     const time = c.toLocaleTimeString(undefined, {
       timeZone: IST_ZONE, hour: "numeric", minute: "2-digit", hour12: true,
     }).toUpperCase();
@@ -802,7 +804,13 @@ window.UI = (function () {
           (r) => {
             const cls = rowClass ? rowClass(r) : "";
             return `<tr${cls ? ` class="${cls}"` : ""}>${keys
-              .map((k) => `<td>${r[k] !== undefined && r[k] !== null ? r[k] : "--"}</td>`)
+              .map((k, i) => {
+                const col = columns && columns[i];
+                const val = r[k] !== undefined && r[k] !== null ? r[k] : "--";
+                return col && typeof col.render === "function"
+                  ? `<td>${col.render(val, r)}</td>`
+                  : `<td>${val}</td>`;
+              })
               .join("")}</tr>`;
           }
         )

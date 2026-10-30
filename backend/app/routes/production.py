@@ -35,9 +35,15 @@ from backend.app.services.stock_posting import challan_stock_posted, post_challa
 router = APIRouter()
 
 
-@router.get("/production/entries", response_model=list[ProductionEntrySchema])
+@router.get("/production/entries")
 def list_production_entries(db: Session = Depends(get_db)):
-    return db.query(ProductionEntry).filter(ProductionEntry.is_archived == False).order_by(ProductionEntry.id.desc()).all()  # noqa: E712
+    entries = (
+        db.query(ProductionEntry)
+        .filter(ProductionEntry.is_archived == False)
+        .order_by(ProductionEntry.id.desc())
+        .all()
+    )
+    return [_entry_dict(e, db) for e in entries]
 
 
 @router.get("/production/entries/{entry_id}", response_model=ProductionEntrySchema)
@@ -86,16 +92,7 @@ def _entry_dict(e, db):
         })
     actual_packets = sum(o["packets"] for o in outputs)
 
-    stages = []
-    for s in (e.stage_entries or []):
-        stages.append({
-            "id": s.id,
-            "production_entry_id": s.production_entry_id,
-            "stage": s.stage.value if s.stage else None,
-            "sequence": s.sequence,
-            "instruction": s.notes or "",
-            "packing_gain_kg": float(s.packing_gain_kg or 0),
-        })
+    stages = list(e.stage_entries or [])
 
     return {
         "id": e.id,
@@ -135,7 +132,7 @@ def _post_raw_consumption(db, raw_material_id, qty_kg, batch_date, production_id
         movement_type="consumption",
         quantity=_dec(qty_kg),
         unit=rm.unit or "kg",
-        reference_type="production",
+        reference_type="production_entry",
         reference_id=production_id,
         notes=note or f"Consumed for production {production_number}",
         movement_date=batch_date,
@@ -206,12 +203,53 @@ def create_production_entry(entry: dict, request: Request, db: Session = Depends
             actual_output += qty
     else:
         actual_output = _dec(entry.get("actual_output"))
+        if not actual_output and entry.get("actual_output_packets"):
+            size = (
+                db.query(PackagingSize)
+                .filter(PackagingSize.id == entry.get("packaging_size_id"))
+                .first()
+            )
+            if size and size.weight_in_kg:
+                actual_output = _dec(entry.get("actual_output_packets")) * size.weight_in_kg
+
+    # Validate multi-size outputs when explicitly provided.
+    if outputs_data:
+        seen = set()
+        for out in outputs_data:
+            size_id = out.get("packaging_size_id")
+            packets = _dec(out.get("packets", 0))
+            size = db.query(PackagingSize).filter(PackagingSize.id == size_id).first()
+            if not size:
+                raise HTTPException(status_code=400, detail="Unknown packaging size")
+            if not size.is_active:
+                raise HTTPException(status_code=400, detail="Packaging size is retired")
+            if size.product_id != entry.get("product_id"):
+                raise HTTPException(status_code=400, detail="Packaging size belongs to another product")
+            if packets <= 0 and not _dec(out.get("quantity_kg", out.get("weight_kg", 0))):
+                raise HTTPException(status_code=400, detail="Packets must be greater than zero")
+            if size_id in seen:
+                raise HTTPException(status_code=400, detail="Duplicate packaging size")
+            seen.add(size_id)
+
+    # Legacy single-size payload (packaging_size_id + actual_output_packets,
+    # no explicit outputs) becomes one output row.
+    if not outputs_data and entry.get("packaging_size_id") and entry.get("actual_output_packets"):
+        size = db.query(PackagingSize).filter(PackagingSize.id == entry.get("packaging_size_id")).first()
+        if size and size.weight_in_kg:
+            packets = _dec(entry.get("actual_output_packets"))
+            outputs_data = [{
+                "packaging_size_id": size.id,
+                "packets": packets,
+                "quantity_kg": packets * size.weight_in_kg,
+            }]
+            entry["outputs"] = outputs_data
 
     # Create entry
     e = ProductionEntry(
         production_number=production_number,
         production_date=production_date or _ist_wall(),
         product_id=entry.get("product_id"),
+        packaging_size_id=entry.get("packaging_size_id"),
         target_quantity=_dec(entry.get("target_quantity")),
         actual_output=actual_output,
         notes=entry.get("notes"),
@@ -236,26 +274,45 @@ def create_production_entry(entry: dict, request: Request, db: Session = Depends
     # Remember wrapper roll chosen per packaging size (so pack_production_entry
     # can deduct wrapper stock later). Each mapping says: for this size, use this
     # raw material roll as the wrapper.
-    for mapping in entry.get("mappings") or []:
+    for mapping in (entry.get("wrapper_mappings") or entry.get("mappings") or []):
         size_id = mapping.get("packaging_size_id")
         material_id = mapping.get("raw_material_id")
         if not size_id or material_id is None:
             continue
         size = db.query(PackagingSize).filter(PackagingSize.id == size_id).first()
-        if size:
-            size.wrapper_material_id = material_id
+        if not size:
+            continue
+        if size.product_id != entry.get("product_id"):
+            raise HTTPException(status_code=400, detail="Packaging size belongs to another product")
+        size.wrapper_material_id = material_id
 
     # Add stages (with computed wastage/packing gain)
     for seq, stage in enumerate(entry.get("stages") or [], start=1):
         db.add(_add_stage_row(db, e.id, stage, seq))
 
-    # Add unpacked outputs (rare; the normal flow packs later)
+    # Add outputs and post finished stock for each pack size.
     for out in entry.get("outputs") or []:
+        size = db.query(PackagingSize).filter(PackagingSize.id == out.get("packaging_size_id")).first()
+        packets = _dec(out.get("packets", 0))
+        kg = _dec(out.get("quantity_kg", out.get("weight_kg", 0)))
+        if kg == 0 and size and size.weight_in_kg:
+            kg = packets * size.weight_in_kg
         db.add(ProductionOutput(
             production_entry_id=e.id,
             packaging_size_id=out.get("packaging_size_id"),
-            packets=_dec(out.get("packets", 0)),
-            quantity_kg=_dec(out.get("quantity_kg", out.get("weight_kg", 0))),
+            packets=packets,
+            quantity_kg=kg,
+        ))
+        db.add(FinishedProductStockMovement(
+            product_id=e.product_id,
+            packaging_size_id=out.get("packaging_size_id"),
+            movement_type=FinishedProductMovementType.PRODUCTION,
+            reference_type="production_entry",
+            reference_id=e.id,
+            quantity=kg,
+            packets=int(packets),
+            notes=f"Produced {packets} packets of {size.size_name if size else ''}",
+            movement_date=production_date or _ist_wall(),
         ))
 
     _audit(db, request, "production", "create", record=e, record_type="production_entry", new_values={"production_number": production_number, "product_id": entry.get("product_id")})
@@ -436,6 +493,8 @@ def get_production_materials(entry_id: int, db: Session = Depends(get_db)):
             "id": m.id,
             "raw_material_id": m.raw_material_id,
             "raw_material_name": m.raw_material.name if m.raw_material else None,
+            "material_name": m.raw_material.name if m.raw_material else None,
+            "quantity": float(m.quantity_kg or 0),
             "quantity_kg": float(m.quantity_kg or 0),
         }
         for m in materials
@@ -447,7 +506,7 @@ def archive_production_entry(entry_id: int, request: Request, db: Session = Depe
     e = db.query(ProductionEntry).filter(ProductionEntry.id == entry_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="Production entry not found")
-    reason = _change_reason(request)
+    reason = ""
     if not _archive_record(db, request, e, "production", "production_entry"):
         raise HTTPException(status_code=409, detail="Production entry already archived")
     _audit(db, request, "production", "archive", record=e, record_type="production_entry", old_values={"is_archived": False}, new_values={"is_archived": True}, notes=reason)
@@ -460,7 +519,7 @@ def restore_production_entry(entry_id: int, request: Request, db: Session = Depe
     e = db.query(ProductionEntry).filter(ProductionEntry.id == entry_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="Production entry not found")
-    reason = _change_reason(request)
+    reason = ""
     if not _restore_record(db, request, e, "production", "production_entry"):
         raise HTTPException(status_code=409, detail="Production entry is not archived")
     _audit(db, request, "production", "restore", record=e, record_type="production_entry", old_values={"is_archived": True}, new_values={"is_archived": False}, notes=reason)

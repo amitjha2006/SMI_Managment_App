@@ -156,9 +156,21 @@ def test_exact_import_routes_win_over_parameterized():
     # so undo never executed although the confirm dialog appeared.
     from fastapi.routing import APIRoute
 
+    def _collect(routes):
+        """Recursively collect APIRoutes, descending into IncludedRouters."""
+        out = []
+        for r in routes:
+            if isinstance(r, APIRoute):
+                out.append(r)
+            elif hasattr(r, "original_router"):
+                out.extend(_collect(r.original_router.routes))
+            elif hasattr(r, "routes"):
+                out.extend(_collect(r.routes))
+        return out
+
     order = []
-    for r in m.app.routes:
-        if isinstance(r, APIRoute) and r.path.startswith("/import/"):
+    for r in _collect(m.app.routes):
+        if r.path.startswith("/import/"):
             order.append((sorted(r.methods or []), r.path, r.endpoint.__name__))
     by_path = {(tuple(mm), p): e for mm, p, e in order}
     assert by_path.get((("POST",), "/import/undo")) == "undo_last_import", order

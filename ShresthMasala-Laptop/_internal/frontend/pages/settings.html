@@ -520,9 +520,9 @@ async function loadBackupSettings() {
   }
   try {
     const d = await window.UI.api("/settings/backup");
-    document.getElementById("set-auto-enabled").value = d.auto_enabled ? "true" : "false";
-    document.getElementById("set-auto-hour").value = d.auto_hour;
-    document.getElementById("set-keep").value = d.keep_count;
+    document.getElementById("set-auto-enabled").value = d.enabled ? "true" : "false";
+    document.getElementById("set-auto-hour").value = d.schedule_hour;
+    document.getElementById("set-keep").value = d.retention_days;
     document.getElementById("set-folder").value = d.folder || "";
   } catch (e) {
     console.error("Backup settings", e);
@@ -536,9 +536,9 @@ async function saveBackupSettings(event) {
   try {
     const res = await fetch("/settings/backup", { method: "PUT",
       headers: {"Content-Type":"application/json"}, body: JSON.stringify({
-        auto_enabled: document.getElementById("set-auto-enabled").value === "true",
-        auto_hour: parseInt(document.getElementById("set-auto-hour").value),
-        keep_count: parseInt(document.getElementById("set-keep").value),
+        enabled: document.getElementById("set-auto-enabled").value === "true",
+        schedule_hour: parseInt(document.getElementById("set-auto-hour").value),
+        retention_days: parseInt(document.getElementById("set-keep").value),
       }) });
     const data = await res.json();
     if (!res.ok) throw new Error(window.UI.formatError(data, "Failed"));
@@ -584,17 +584,16 @@ async function loadEmailSettings() {
     const d = await window.UI.api("/settings/email");
     document.getElementById("em-host").value = d.smtp_host || "";
     document.getElementById("em-port").value = d.smtp_port || 587;
-    document.getElementById("em-sec").value = d.use_ssl ? "ssl" : (d.use_tls ? "starttls" : "none");
-    if (d.use_ssl) document.getElementById("em-port").value = document.getElementById("em-port").value || 465;
-    document.getElementById("em-user").value = d.username || "";
-    document.getElementById("em-from").value = d.from_addr || "";
-    document.getElementById("em-alert-to").value = d.alert_to || "";
+    document.getElementById("em-sec").value = d.use_tls ? "starttls" : "none";
+    document.getElementById("em-user").value = d.smtp_user || "";
+    document.getElementById("em-from").value = d.from_email || "";
+    document.getElementById("em-alert-to").value = d.alert_recipient || "";
     document.getElementById("rep-enabled").value = d.report_enabled ? "true" : "false";
-    document.getElementById("rep-hour").value = d.report_hour;
+    document.getElementById("rep-hour").value = d.report_hour || 8;
     document.getElementById("rep-frequency").value = d.report_frequency || "daily";
     document.getElementById("rep-weekday").value = d.report_weekday != null ? d.report_weekday : 4;
     document.getElementById("rep-to").value = d.report_to || "";
-    paintSectionBoxes(d.report_sections);
+    paintSectionBoxes(d.report_sections || []);
     syncFrequencyVisibility();
   } catch (e) {
     console.error("Email settings", e);
@@ -608,15 +607,14 @@ async function saveEmailSettings(event) {
   try {
     const pw = document.getElementById("em-pass").value;
     const payload = {
-      "email.smtp_host": document.getElementById("em-host").value.trim(),
+      smtp_host: document.getElementById("em-host").value.trim(),
       smtp_port: parseInt(document.getElementById("em-port").value) || 587,
       use_tls: document.getElementById("em-sec").value === "starttls",
-      use_ssl: document.getElementById("em-sec").value === "ssl",
-      "email.username": document.getElementById("em-user").value.trim(),
-      "email.from_addr": document.getElementById("em-from").value.trim(),
-      "email.alert_to": document.getElementById("em-alert-to").value.trim(),
+      smtp_user: document.getElementById("em-user").value.trim(),
+      from_email: document.getElementById("em-from").value.trim(),
+      alert_recipient: document.getElementById("em-alert-to").value.trim(),
     };
-    if (pw) payload.password = pw;
+    if (pw) payload.smtp_password = pw;
     const res = await fetch("/settings/email", { method: "PUT",
       headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
     const data = await res.json();

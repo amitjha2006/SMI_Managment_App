@@ -659,26 +659,26 @@
       const range = document.getElementById("rep-range");
       if (range) range.textContent = (from || to) ? ("Filtered: " + (from || "…") + " to " + (to || "…")) : "Showing all data";
       const fmt = n => "₹ " + (parseFloat(n) || 0).toFixed(2);
-      document.getElementById("rep-sales").textContent = fmt(d.sales.total);
-      document.getElementById("rep-received").textContent = fmt(d.sales.received);
-      document.getElementById("rep-out").textContent = fmt(d.sales.outstanding);
-      document.getElementById("rep-exp").textContent = fmt(d.expenses.total);
+      document.getElementById("rep-sales").textContent = fmt((d.sales || {}).amount || 0);
+      document.getElementById("rep-received").textContent = fmt((d.sales || {}).received || 0);
+      document.getElementById("rep-out").textContent = fmt((d.sales || {}).outstanding || 0);
+      document.getElementById("rep-exp").textContent = fmt((d.expenses || {}).amount || 0);
 
       kv("rep-sales-status",
-        (d.sales.by_status || []).map(r => ({ status: r.status, count: r.count })),
+        ((d.sales || {}).by_status || []).map(r => ({ status: r.status, count: r.count })),
         [{key:"status",label:"Status"},{key:"count",label:"Challans"}]);
 
       kv("rep-purch", [{
-        total: fmt(d.purchases.total), paid: fmt(d.purchases.paid),
-        outstanding: fmt(d.purchases.outstanding), count: d.purchases.count,
+        total: fmt((d.purchases || {}).amount || 0), paid: fmt((d.purchases || {}).paid || 0),
+        outstanding: fmt((d.purchases || {}).outstanding || 0), count: (d.purchases || {}).count || 0,
       }], [{key:"total",label:"Total"},{key:"paid",label:"Paid"},{key:"outstanding",label:"Outstanding"},{key:"count",label:"Invoices"}]);
 
       kv("rep-exp-cat",
-        (d.expenses.by_category || []).map(r => ({ category: r.category, total: fmt(r.total) })),
+        ((d.expenses || {}).by_category || []).map(r => ({ category: r.category, total: fmt(r.total) })),
         [{key:"category",label:"Category"},{key:"total",label:"Total"}]);
 
       kv("rep-prod",
-        (d.production.by_status || []).map(r => ({ status: r.status, count: r.count })),
+        ((d.production || {}).by_status || []).map(r => ({ status: r.status, count: r.count })),
         [{key:"status",label:"Status"},{key:"count",label:"Entries"}]);
 
       kv("rep-low",

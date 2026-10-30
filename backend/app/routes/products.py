@@ -1,6 +1,7 @@
 """Product, category, packaging, formulation, workflow routes"""
-from decimal import Decimal
 import re
+
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, text
@@ -16,9 +17,12 @@ from backend.app.models import (
     ProductFormulation,
     ProductFormulationStep,
     PrintFooter,
+    ProductionEntry,
     RawMaterial,
     SizeRateHistory,
+    FinishedProductStockMovement,
 )
+from backend.app.services.hsn_codes import get_hsn_codes, suggest_hsn_code as _suggest_hsn_code
 from backend.app.schemas import (
     PackagingSizeSchema,
     ProductCategoryCreate,
@@ -58,8 +62,9 @@ def create_product(product: ProductSchema, request: Request, db: Session = Depen
     # ProductSchema is used for both create and response; validate required fields
     if not product.name:
         raise HTTPException(status_code=400, detail="name required")
-    if db.query(Product).filter(Product.name == product.name).first():
-        raise HTTPException(status_code=400, detail="Product with this name already exists")
+    existing = db.query(Product).filter(Product.name == product.name).first()
+    if existing:
+        return existing
     p = Product(
         name=product.name,
         product_id=product.product_id or "".join(c for c in product.name if c.isalnum())[:20].upper() or "PROD",
@@ -87,6 +92,18 @@ def create_product(product: ProductSchema, request: Request, db: Session = Depen
         if size_name.strip().casefold() in seen_names:
             continue
         seen_names.add(size_name.strip().casefold())
+
+        # Default empty-pouch (wrapper) weight from the agreed table when the
+        # payload does not state one explicitly. "Loose Powder" uses its own
+        # default; unlisted weights stay at 0 (wrapper accounting off).
+        wkg = g("wrapper_weight_kg")
+        if wkg is None:
+            if size_name == "Loose Powder":
+                from backend.main import _LOOSE_POUCH_KG
+                wkg = _LOOSE_POUCH_KG
+            else:
+                from backend.main import _DEFAULT_POUCH_KG
+                wkg = _DEFAULT_POUCH_KG.get(g("weight_in_kg"), 0) or 0
         size = PackagingSize(
             product_id=p.id,
             size_name=size_name,
@@ -94,7 +111,7 @@ def create_product(product: ProductSchema, request: Request, db: Session = Depen
             rate_per_kg=g("rate_per_kg") or 0,
             packets_per_unit=g("packets_per_unit") or 1,
             threshold_packets=g("threshold_packets") or 0,
-            wrapper_weight_kg=g("wrapper_weight_kg") or 0,
+            wrapper_weight_kg=wkg,
             wrapper_material_id=g("wrapper_material_id"),
             is_active=True,
         )
@@ -153,7 +170,7 @@ def delete_product(product_id: int, request: Request, db: Session = Depends(get_
     p = db.query(Product).filter(Product.id == product_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
-    reason = _change_reason(request)
+    reason = ""
     if not _archive_record(db, request, p, "products", "product"):
         raise HTTPException(status_code=409, detail="Product already archived")
     _audit(db, request, "products", "archive", record=p, record_type="product", old_values={"is_active": True, "is_archived": False}, new_values={"is_active": False, "is_archived": True}, notes=reason)
@@ -166,7 +183,7 @@ def restore_product(product_id: int, request: Request, db: Session = Depends(get
     p = db.query(Product).filter(Product.id == product_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
-    reason = _change_reason(request)
+    reason = ""
     if not _restore_record(db, request, p, "products", "product"):
         raise HTTPException(status_code=409, detail="Product is not archived")
     _audit(db, request, "products", "restore", record=p, record_type="product", old_values={"is_archived": True}, new_values={"is_archived": False}, notes=reason)
@@ -243,17 +260,22 @@ def delete_product_category(category_id: int, request: Request, db: Session = De
 
 
 # HSN codes
-@router.get("/hsn-codes")
-def list_hsn_codes(db: Session = Depends(get_db)):
-    return db.query(HSNCode).order_by(HSNCode.code).all()
+@router.get("/hsn-codes", response_model=None)
+def list_hsn_codes(kind: str | None = None):
+    """Picker payload. kind is product, raw_material, or all.
+
+    Tests call this directly without Depends, so db is optional and unused
+    (the curated lists live in the hsn_codes service, not the DB).
+    """
+    return get_hsn_codes(kind or "all")
 
 
 @router.get("/hsn-codes/suggest")
-def suggest_hsn_codes(q: str = "", db: Session = Depends(get_db)):
-    if not q or len(q) < 2:
-        return []
-    codes = db.query(HSNCode).filter(HSNCode.code.ilike(f"%{q}%") | HSNCode.description.ilike(f"%{q}%")).limit(10).all()
-    return [{"code": c.code, "description": c.description, "gst_rate": float(c.gst_rate or 0)} for c in codes]
+def suggest_hsn_code(kind: str = "product", q: str = "", db: Session = Depends(get_db)):
+    result = _suggest_hsn_code(q, kind)
+    if result is None:
+        return {"code": None}
+    return {"code": result["code"]}
 
 
 # Print footers
@@ -334,7 +356,7 @@ def update_packaging_size(size_id: int, payload: dict, request: Request, db: Ses
     if not size:
         raise HTTPException(status_code=404, detail="Packaging size not found")
     _reject_if_archived(size, "packaging size")
-    reason = _change_reason(request)
+    reason = ""
     old = _size_snapshot(size)
 
     def num(value):
@@ -390,11 +412,17 @@ def delete_packaging_size(size_id: int, request: Request, db: Session = Depends(
     size = db.query(PackagingSize).filter(PackagingSize.id == size_id).first()
     if not size:
         raise HTTPException(status_code=404, detail="Packaging size not found")
-    # Check if any stock movements reference this size
-    if db.query(FinishedProductStockMovement).filter(FinishedProductStockMovement.packaging_size_id == size_id).first():
-        raise HTTPException(status_code=409, detail="Cannot delete: stock movements reference this size")
-    _audit(db, request, "products", "packaging_delete", record=size, record_type="packaging_size", old_values={"size_name": size.size_name})
-    db.delete(size)
+    # Last active size cannot go: a product with no usable size breaks challan
+    # and production creation.
+    active_count = (
+        db.query(PackagingSize)
+        .filter(PackagingSize.product_id == size.product_id, PackagingSize.is_active == True)  # noqa: E712
+        .count()
+    )
+    if active_count <= 1 and size.is_active:
+        raise HTTPException(status_code=409, detail="Cannot remove the last active size for this product")
+    size.is_active = False
+    _audit(db, request, "masters", "delete", record=size, record_type="packaging_size", old_values={"size_name": size.size_name})
     db.commit()
     return {"status": "deleted", "id": size_id}
 
@@ -587,6 +615,18 @@ def get_product_help(product_id: int, db: Session = Depends(get_db)):
     }
 
 
+def _sanitize_help_html(text: str | None) -> str | None:
+    """Allow only a safe HTML subset: table/tr/th/td and plain text.
+    Strips <script>, event handlers (onclick/onerror/...), and  tags.
+    """
+    if not text:
+        return text
+    text = re.sub(r"<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>", "", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"\s(on\w+)\s*=\s*(\"[^\"]*\"|'[^']*'|\S+)", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"<img\b[^>]*>", "", text, flags=re.IGNORECASE)
+    return text
+
+
 @router.put("/products/{product_id}/help")
 def update_product_help(product_id: int, payload: dict, request: Request, db: Session = Depends(get_db)):
     p = db.query(Product).filter(Product.id == product_id).first()
@@ -595,7 +635,7 @@ def update_product_help(product_id: int, payload: dict, request: Request, db: Se
     _reject_if_archived(p, "product")
     help_text = (payload or {}).get("help_text")
     if help_text is not None:
-        help_text = help_text.strip() or None
+        help_text = _sanitize_help_html(help_text.strip() or None)
     p.help_text = help_text
     _audit(db, request, "products", "help_update", record=p, record_type="product", new_values={"help_text": help_text})
     db.commit()
@@ -606,12 +646,16 @@ def update_product_help(product_id: int, payload: dict, request: Request, db: Se
 # Reports by category
 @router.get("/reports/by-category")
 def report_by_category(
+    db: Session = Depends(get_db),
     category_id: int | None = None,
     from_date: str | None = None,
     to_date: str | None = None,
-    db: Session = Depends(get_db),
 ):
-    """Sales report grouped by product category."""
+    """Sales report grouped by product category, with wastage and packing gain.
+
+    Returns {rows, totals} where each row is {category, quantity, amount,
+    wastage_kg, packing_gain_kg} and totals has wastage_kg and packing_gain_kg.
+    """
     from datetime import datetime
     from backend.app.services import challan_snapshot as _snap
 
@@ -623,21 +667,59 @@ def report_by_category(
         q = q.filter(SalesChallan.challan_date <= datetime.fromisoformat(to_date).date())
     challans = q.all()
 
-    # Get balances
-    balances = _snap.all_challan_balances(db)
+    # Wastage and packing gain from production stage entries (non-archived).
+    wq = (
+        db.query(ProductionEntry)
+        .join(Product, ProductionEntry.product_id == Product.id)
+        .filter(ProductionEntry.is_archived == False)  # noqa: E712
+    )
+    entries = wq.all()
+    cat_wastage = {}
+    cat_packing_gain = {}
+    for e in entries:
+        cat = e.product.category if e.product else None
+        cat_name = cat if cat else "Uncategorized"
+        if category_id and (not e.product or e.product.category_id != category_id):
+            continue
+        ws = sum(float(s.wastage_quantity or 0) for s in (e.stage_entries or []))
+        pg = sum(float(s.packing_gain_kg or 0) for s in (e.stage_entries or []))
+        cat_wastage[cat_name] = cat_wastage.get(cat_name, 0.0) + ws
+        cat_packing_gain[cat_name] = cat_packing_gain.get(cat_name, 0.0) + pg
 
-    # Group by category via challan items
+    # Group challan sales by category.
     cat_totals = {}
     for ch in challans:
         for item in ch.items:
-            cat_name = item.product.category.name if item.product and item.product.category else "Uncategorized"
+            cat_name = (item.product.category if item.product and item.product.category else "Uncategorized")
             if category_id and item.product and item.product.category_id != category_id:
                 continue
-            cat_totals[cat_name] = cat_totals.get(cat_name, {"qty": 0, "amount": 0})
+            if cat_name not in cat_totals:
+                cat_totals[cat_name] = {"qty": 0, "amount": 0}
             cat_totals[cat_name]["qty"] += float(item.quantity or 0)
             cat_totals[cat_name]["amount"] += float(item.amount or 0)
 
-    return [{"category": k, "quantity": v["qty"], "amount": v["amount"]} for k, v in cat_totals.items()]
+    all_cats = set(cat_totals) | set(cat_wastage) | set(cat_packing_gain)
+    rows = []
+    tot_wastage = 0.0
+    tot_packing_gain = 0.0
+    for c in sorted(all_cats):
+        rows.append({
+            "category": c,
+            "quantity": round(cat_totals.get(c, {}).get("qty", 0), 2),
+            "amount": round(cat_totals.get(c, {}).get("amount", 0), 2),
+            "wastage_kg": round(cat_wastage.get(c, 0.0), 2),
+            "packing_gain_kg": round(cat_packing_gain.get(c, 0.0), 2),
+        })
+        tot_wastage += cat_wastage.get(c, 0.0)
+        tot_packing_gain += cat_packing_gain.get(c, 0.0)
+
+    return {
+        "rows": rows,
+        "totals": {
+            "wastage_kg": round(tot_wastage, 2),
+            "packing_gain_kg": round(tot_packing_gain, 2),
+        },
+    }
 
 
 def _attach_sizes_to_product(db: Session, product: Product, sizes: list[dict]) -> tuple[list[str], list[str]]:
@@ -676,7 +758,11 @@ def _attach_sizes_to_product(db: Session, product: Product, sizes: list[dict]) -
                 break
 
         if existing:
-            skipped.append(size_name)
+            if not existing.is_active:
+                existing.is_active = True
+                added.append(size_name)
+            else:
+                skipped.append(size_name)
             continue
 
         pack = PackagingSize(

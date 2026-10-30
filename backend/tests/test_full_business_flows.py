@@ -163,22 +163,30 @@ class TestCompleteSalesFlow:
         assert challan.status == ChallanStatus.CONFIRMED
         assert challan.confirmed_at is not None
         
-        # Verify finished stock SALES movement posted: -10 kg (40 packets) 
-        # Note: SALES movement stores negative quantity for the sale amount
+        # Verify finished stock SALES movement posted: 10 kg (40 packets)
+        # SALES movement stores positive quantity; balance endpoint deducts via stock_kg - out_kg
         sales_movements = db.query(models.FinishedProductStockMovement).filter(
             models.FinishedProductStockMovement.product_id == prod.id,
             models.FinishedProductStockMovement.packaging_size_id == size.id,
             models.FinishedProductStockMovement.movement_type == "sales"
         ).all()
         assert len(sales_movements) == 1
-        assert sales_movements[0].quantity == D("-10.00")
+        assert sales_movements[0].quantity == D("10.00")
         # Note: packets may not be set on SALES movement
         
         # Verify net stock = 100 - 10 = 90 kg
-        net_stock = db.query(models.FinishedProductStockMovement).filter(
+        # SALES movements store positive qty; net = production + opening - sales - adjustment - wastage - return
+        in_kg = db.query(func.sum(models.FinishedProductStockMovement.quantity)).filter(
             models.FinishedProductStockMovement.product_id == prod.id,
-            models.FinishedProductStockMovement.packaging_size_id == size.id
-        ).with_entities(func.sum(models.FinishedProductStockMovement.quantity)).scalar() or D("0")
+            models.FinishedProductStockMovement.packaging_size_id == size.id,
+            models.FinishedProductStockMovement.movement_type.in_(["production", "opening"]),
+        ).scalar() or D("0")
+        out_kg = db.query(func.sum(models.FinishedProductStockMovement.quantity)).filter(
+            models.FinishedProductStockMovement.product_id == prod.id,
+            models.FinishedProductStockMovement.packaging_size_id == size.id,
+            models.FinishedProductStockMovement.movement_type.in_(["sales", "adjustment", "wastage", "return"]),
+        ).scalar() or D("0")
+        net_stock = D(str(in_kg)) - D(str(out_kg))
         assert net_stock == D("90.00")
 
     def test_customer_payment_settles_receivable(self, db):
@@ -284,7 +292,7 @@ class TestCompleteProductionFlow:
         raw_movements = db.query(models.RawMaterialStockMovement).filter(
             models.RawMaterialStockMovement.raw_material_id == mat.id,
             models.RawMaterialStockMovement.movement_type == "consumption",
-            models.RawMaterialStockMovement.reference_type == "production",
+            models.RawMaterialStockMovement.reference_type == "production_entry",
             models.RawMaterialStockMovement.reference_id == entry_id
         ).all()
         assert len(raw_movements) == 1
@@ -832,11 +840,11 @@ class TestCrossFlowIntegrity:
         ).all()
         assert len(movements) == 2
         
-        # Verify quantities match items (negative for sales movement)
+        # Verify quantities match items (positive for sales movement; balance deducts via stock_kg - out_kg)
         # Note: packets may not be set on SALES movement
         by_size = {m.packaging_size_id: m for m in movements}
-        assert by_size[size.id].quantity == D("-10.00")
-        assert by_size[size2.id].quantity == D("-2.00")
+        assert by_size[size.id].quantity == D("10.00")
+        assert by_size[size2.id].quantity == D("2.00")
 
     def test_production_consumption_matches_formulation_ratio(self, db):
         """Raw material consumption should be traceable to formulation."""
@@ -866,7 +874,7 @@ class TestCrossFlowIntegrity:
         
         # Verify raw stock movement matches (positive for consumption type)
         raw_mov = db.query(models.RawMaterialStockMovement).filter(
-            models.RawMaterialStockMovement.reference_type == "production",
+            models.RawMaterialStockMovement.reference_type == "production_entry",
             models.RawMaterialStockMovement.reference_id == prod_entry["id"]
         ).one()
         assert raw_mov.quantity == D("100.000")

@@ -896,9 +896,20 @@ window.cancelQuickAddProduct = function (silent) {
       if (token !== detailToken) return;
       let stagesHtml = "<p>No stages recorded.</p>";
       if (d.stage_entries && d.stage_entries.length) {
-        stagesHtml = "<table><thead><tr><th>#</th><th>Stage</th><th>Input (kg)</th><th>Output (kg)</th><th>Loss (kg)</th><th>Loss %</th><th>Gain (kg)</th></tr></thead><tbody>" +
-          d.stage_entries.map(s => `<tr><td>${esc(s.sequence)}</td><td>${esc(s.stage)}</td><td>${esc(s.input_quantity)}</td><td>${esc(s.output_quantity)}</td><td>${esc(s.wastage_quantity)}</td><td>${esc(s.wastage_percentage)}</td><td>${esc(s.packing_gain_kg || 0)}</td></tr>`).join("") +
-          "</tbody></table>";
+        stagesHtml = "<div class='table-wrap'><table><thead><tr><th>#</th><th>Stage</th><th>Input (kg)</th><th>Output (kg)</th><th>Loss (kg)</th><th>Loss %</th><th>Gain (kg)</th></tr></thead><tbody>" +
+          d.stage_entries.map(s => {
+            // LOSS (KG) is recomputed from recorded input/output rather than
+            // trusted blindly from the stored wastage_quantity column: historical
+            // rows that predate wastage_quantity (or whose stored value is NULL)
+            // still show the correct loss, matching aggregate_by_category's
+            // server-side rule. Loss clamps at zero - a stage reporting more
+            // output than input is a data mistake, not negative wastage.
+            const inKg = parseFloat(s.input_quantity || 0);
+            const outKg = parseFloat(s.output_quantity || 0);
+            const lossKg = Math.max(0, Math.round((inKg - outKg) * 1000) / 1000);
+            return `<tr><td>${esc(s.sequence)}</td><td>${esc(s.stage)}</td><td>${window.UI.qtyUnit(s.input_quantity, "kg")}</td><td>${window.UI.qtyUnit(s.output_quantity, "kg")}</td><td>${window.UI.qtyUnit(lossKg, "kg")}</td><td>${esc(s.wastage_percentage)}%</td><td>${window.UI.qtyUnit(s.packing_gain_kg || 0, "kg")}</td></tr>`;
+          }).join("") +
+          "</tbody></table></div>";
       }
       let matHtml = "";
       try {

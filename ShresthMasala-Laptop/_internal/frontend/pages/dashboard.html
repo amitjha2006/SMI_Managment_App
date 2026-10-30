@@ -37,7 +37,7 @@
 <div class="stats-row" id="stats-row" aria-label="Dashboard statistics" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
   <div class="stat-card"><h4><span class="stat-icon">🧂</span> Raw Material</h4><div class="stat-value" id="stat-raw">—</div><div class="stat-sub" id="stat-raw-sub"></div><a href="#/raw-materials" style="font-size:12px;">View inventory →</a></div>
   <div class="stat-card"><h4><span class="stat-icon">📦</span> Finished Goods</h4><div class="stat-value" id="stat-fin">—</div><div class="stat-sub" id="stat-fin-sub"></div><a href="#/products" style="font-size:12px;">View inventory →</a></div>
-  <div class="stat-card"><h4><span class="stat-icon">🧾</span> Pending Purchase Invoices</h4><div class="stat-value" id="stat-inv">—</div><div class="stat-sub" id="stat-inv-sub"></div><a href="#/invoices" style="font-size:12px;">View purchase invoices →</a></div>
+  <div class="stat-card"><h4><span class="stat-icon">💳</span> Pending Customer Dues</h4><div class="stat-value" id="stat-inv">—</div><div class="stat-sub" id="stat-inv-sub"></div><a href="#/challans" style="font-size:12px;">View challans →</a></div>
   <div class="stat-card"><h4><span class="stat-icon">💰</span> Sales This Month</h4><div class="stat-value" id="stat-sales">—</div><div class="stat-sub" id="stat-sales-sub"></div><div class="stat-sub" id="stat-sales-chg"></div><a href="#/monthly-sales" style="font-size:12px;">View monthly sales →</a></div>
   <div class="stat-card" id="card-cust-out"><h4><span class="stat-icon">💳</span> Customer Outstanding</h4><div class="stat-value" id="stat-out">—</div><div class="stat-sub">Receivable from customers</div><a href="#/challans" style="font-size:12px;">View challans →</a></div>
   <div class="stat-card" id="card-sup-pay"><h4><span class="stat-icon">🧾</span> Supplier Payable</h4><div class="stat-value" id="stat-payable">—</div><div class="stat-sub">Payable to suppliers</div><a href="#/invoices" style="font-size:12px;">View purchase invoices →</a></div>
@@ -258,68 +258,88 @@
   }
 
   async function fetchStats() {
+    // Bail if the user navigated away from the dashboard while this async
+    // call was in flight — otherwise we'd write to DOM elements that no
+    // longer exist (null textContent crash).
+    const hash = window.location.hash ? window.location.hash.replace("#", "") : "/";
+    const clean = hash.split("?")[0] || "/";
+    const seg = clean === "/" ? "dashboard" : (clean.split("/").pop() || "dashboard");
+    if (seg !== "dashboard") return;
+
     const errEl = document.getElementById("stat-error");
     if (errEl) errEl.textContent = "";
     try {
       const data = await window.UI.api("/dashboard/stats");
 
-      document.getElementById("stat-raw").textContent = fmtKg(data.raw_material_stock_kg);
+      const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+      const setStyle = (id, value) => { const el = document.getElementById(id); if (el) el.style.color = value; };
+
+      set("stat-raw", fmtKg(data.raw_material_stock_kg));
       const purch = Math.round((parseFloat(data.raw_material_purchased_month) || 0) * 100) / 100;
       let matCount = null;
       try {
         const mats = await window.UI.api("/raw-materials") || [];
-        matCount = mats.filter(m => m.is_active !== false).length;
+        const arr = Array.isArray(mats) ? mats : [];
+        matCount = arr.filter(m => m && m.is_active !== false).length;
       } catch (e) { console.error("Materials count", e); }
       const chgEl = document.getElementById("stat-raw-sub");
-      chgEl.textContent = (matCount !== null ? matCount + (matCount === 1 ? " material · " : " materials · ") : "") +
-        purch.toLocaleString("en-IN", { maximumFractionDigits: 2 }) + " kg purchased this month";
-      chgEl.style.color = "var(--color-text-muted)";
+      if (chgEl) {
+        chgEl.textContent = (matCount !== null ? matCount + (matCount === 1 ? " material · " : " materials · ") : "") +
+          purch.toLocaleString("en-IN", { maximumFractionDigits: 2 }) + " kg purchased this month";
+        chgEl.style.color = "var(--color-text-muted)";
+      }
 
       const pkts = Math.round((parseFloat(data.finished_goods_packets) || 0) * 100) / 100;
-      document.getElementById("stat-fin").textContent = fmtKg(data.finished_goods_kg);
-      document.getElementById("stat-fin-sub").textContent = pkts + " packets";
+      set("stat-fin", fmtKg(data.finished_goods_kg));
+      set("stat-fin-sub", pkts + " packets");
 
       const invCount = data.pending_invoices_count || 0;
-      document.getElementById("stat-inv").textContent = invCount;
-      document.getElementById("stat-inv-sub").textContent = fmtRs(data.pending_invoices_amount) + " outstanding";
+      set("stat-inv", invCount);
+      set("stat-inv-sub", fmtRs(data.pending_invoices_amount) + " outstanding");
 
-      document.getElementById("stat-sales").textContent = fmtRs(data.sales_this_month);
+      set("stat-sales", fmtRs(data.sales_this_month));
       const now = new Date();
       const monthName = now.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
-      document.getElementById("stat-sales-sub").textContent = monthName;
+      set("stat-sales-sub", monthName);
       const prevMonthName = new Date(now.getFullYear(), now.getMonth() - 1, 1)
         .toLocaleDateString("en-IN", { month: "short" });
       const cur = parseFloat(data.sales_this_month) || 0;
       const prev = parseFloat(data.sales_last_month) || 0;
       const chgEl2 = document.getElementById("stat-sales-chg");
-      if (prev > 0) {
-        const pct = (cur - prev) / prev * 100;
-        const up = pct >= 0;
-        chgEl2.textContent = (up ? "↑ " : "↓ ") + Math.abs(Math.round(pct * 10) / 10) + "% vs " + prevMonthName;
-        chgEl2.style.color = up ? "var(--color-success)" : "var(--color-danger)";
-      } else if (cur > 0) {
-        chgEl2.textContent = "New this month (no sales in " + prevMonthName + ")";
-        chgEl2.style.color = "var(--color-text-muted)";
-      } else {
-        chgEl2.textContent = "No sales yet";
-        chgEl2.style.color = "var(--color-text-muted)";
+      if (chgEl2) {
+        if (prev > 0) {
+          const pct = (cur - prev) / prev * 100;
+          const up = pct >= 0;
+          chgEl2.textContent = (up ? "↑ " : "↓ ") + Math.abs(Math.round(pct * 10) / 10) + "% vs " + prevMonthName;
+          chgEl2.style.color = up ? "var(--color-success)" : "var(--color-danger)";
+        } else if (cur > 0) {
+          chgEl2.textContent = "New this month (no sales in " + prevMonthName + ")";
+          chgEl2.style.color = "var(--color-text-muted)";
+        } else {
+          chgEl2.textContent = "No sales yet";
+          chgEl2.style.color = "var(--color-text-muted)";
+        }
       }
 
-      document.getElementById("stat-out").textContent = fmtRs(data.customer_outstanding != null ? data.customer_outstanding : data.outstanding_total);
-      document.getElementById("stat-payable").textContent = fmtRs(data.supplier_payable);
+      set("stat-out", fmtRs(data.customer_outstanding != null ? data.customer_outstanding : data.outstanding_total));
+      set("stat-payable", fmtRs(data.supplier_payable));
       const flow = data.cashflow_month || {};
       const got = parseFloat(flow.received) || 0;
       const spent = parseFloat(flow.paid) || 0;
       const net = (parseFloat(data.cashflow_net) || 0);
-      document.getElementById("stat-cash").textContent = fmtRs(got) + " in · " + fmtRs(spent) + " out";
+      set("stat-cash", fmtRs(got) + " in · " + fmtRs(spent) + " out");
       const cashSub = document.getElementById("stat-cash-sub");
-      cashSub.textContent = "Net " + fmtRs(net) + " lifetime";
-      cashSub.style.color = net < 0 ? "var(--color-danger)" : "var(--color-text-muted)";
+      if (cashSub) {
+        cashSub.textContent = "Net " + fmtRs(net) + " lifetime";
+        cashSub.style.color = net < 0 ? "var(--color-danger)" : "var(--color-text-muted)";
+      }
       const lowCount = data.low_stock_items || 0;
       const lowEl = document.getElementById("stat-low");
-      lowEl.textContent = lowCount;
-      lowEl.style.color = lowCount > 0 ? "var(--color-warning)" : "";
-      document.getElementById("stat-prod-today").textContent = fmtKg(data.production_today_kg);
+      if (lowEl) {
+        lowEl.textContent = lowCount;
+        lowEl.style.color = lowCount > 0 ? "var(--color-warning)" : "";
+      }
+      set("stat-prod-today", fmtKg(data.production_today_kg));
     } catch (e) {
       console.error("Dashboard stats error", e);
       // Every card staying "—" looks like "no data"; say what actually failed
@@ -921,9 +941,9 @@ async function loadAttention() {
       const podLine = (pod.count || 0) > 0
         ? `<br><span style="color:var(--color-danger); font-weight:600;">${fmtIndian(pod.amount)} overdue 30+ days (${pod.count} invoice${pod.count === 1 ? "" : "s"})</span>`
         : "";
-      items.push(`<div>🔴 <strong>${pendCount} Pending Purchase Invoice${one ? "" : "s"}</strong><br>` +
+      items.push(`<div>🔴 <strong>${pendCount} Pending Customer Due${one ? "" : "s"}</strong><br>` +
         `<span style="color:var(--color-text-muted);">${fmtIndian(d.pending_invoices_amount)} outstanding${pparts.length ? " · " + pparts.join(" · ") : ""}</span>${podLine}<br>` +
-        `<a href="#/invoices" style="font-size:13px;">View purchase invoice${one ? "" : "s"} →</a></div>`);
+        `<a href="#/challans" style="font-size:13px;">View challan${one ? "" : "s"} →</a></div>`);
     }
     const low = d.low_stock_items || 0;
     if (low > 0) {

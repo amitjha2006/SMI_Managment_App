@@ -14,8 +14,8 @@ no `head`, no `grep -E`; use `;` chaining and `Select-String`.
 ## Layout (non-obvious parts)
 
 - Route handlers live in `backend/app/routes/*.py`; `backend/main.py` assembles
-  the app and `include_router`s them (lines ~300–314). `backend/app/api/` is
-  empty — do not add routers there.
+  the app and `include_router`s them. `backend/app/api/` is empty — do not add
+  routers there.
 - **Route registration order decides matching.** Static paths must be declared
   above parameterized ones (e.g. `/import/undo` before `/import/{import_type}`).
 - Frontend is static pages (`frontend/pages/*.html` + `frontend/js/`), served
@@ -29,6 +29,8 @@ no `head`, no `grep -E`; use `;` chaining and `Select-String`.
   `main.py`; the configurable permission catalogue is
   `backend/app/core/permissions.py`, seeded by `init_db()`. Extend the prefix
   list for a new admin-only route.
+- **Mutating methods (PUT/PATCH/DELETE) require the editor claim.** Plain login
+  starts with it OFF — enable via `POST /auth/editor-mode {"enabled":true}`.
 
 ## Frontend conventions
 
@@ -39,13 +41,18 @@ no `head`, no `grep -E`; use `;` chaining and `Select-String`.
   `components.js?v=N` (single reference). Bump `N` when `components.js` changes.
 - Every date column: `UI.dateWithTime` display + hidden `UI.tsKey(business,
   createdAt)` sort key; money: `UI.money`.
+- `dashboard.html fetchStats` guards on the current hash segment (`seg !== "dashboard"` returns early) so an in-flight call can't write to a swapped-out page.
+- `settings.html` field names must match the backend: backup uses `enabled`,
+  `schedule_hour`, `retention_days` (NOT `auto_hour`/`keep_count`); email uses
+  `smtp_user`, `from_email`, `alert_recipient`, `use_tls`, `report_hour` (|| 8),
+  `report_sections` (|| []).
 
 ## Universal date rule (pinned by tests)
 
 1. Timezone is India, everywhere. Backend writes `_ist_wall()` (naive IST);
    frontend parses naive values as IST (`asUtcDate`). Never `datetime.now`,
-   `datetime.utcnow`, or `func.now` in persistence paths
-   (`test_ist_everywhere.py`). Non-persistence uses (JWT expiry, PDF stamp) fine.
+   `datetime.utcnow`, or `func.now` in persistence paths (`test_ist_everywhere.py`).
+   Non-persistence uses (JWT expiry, PDF stamp) fine.
 2. Every add/edit stamps a full timestamp. `created_at` defaults `_ist_wall` at
    insert and is never reassigned by updates; `updated_at` tracks edits.
 3. Date order is newest-first, ties broken by time then id:
@@ -79,6 +86,34 @@ no `head`, no `grep -E`; use `;` chaining and `Select-String`.
 - `import backend.main` runs `init_db()` as a side effect; the auto-backup
   scheduler starts in the lifespan handler (serve time), not on import.
 
+## Change-reason rule
+
+- `_change_reason(request, payload=None)` (`backend/app/core/shared.py`) requires
+  a change reason ≥ `_CHANGE_NOTE_MIN` (5) chars, read from `payload.reason`
+  or the `?reason=` query param. It raises HTTP 400 when missing/short.
+- It is mandatory only on **money endpoints** (customer/supplier payments,
+  payroll, expenses, cash void/restore). Non-money edits (products, customers,
+  employees, production, purchase, raw materials, suppliers) do NOT require it.
+- Read reason from query param for PUT routes with no body (`?reason=<text>`);
+  from payload body when one is sent.
+
+## main.py test aliases
+
+`backend/main.py` re-exports route functions so tests can call them directly:
+`list_products`, `list_customers`, `list_suppliers`, `reports_summary`,
+`recent_transactions`, `suggest_hsn_code`, `_production_to_dict`,
+`set_editor_mode`. Tests call route/service functions directly with an explicit
+session, e.g. `main.finished_stock_balance(db)`. No `TestClient`.
+
+## Route fixes to know
+
+- `/raw-material-categories` is `GET` (line ~105 in `raw_materials.py`), not POST.
+- Employee sub-routes exist as `/{employee_id}/attendance`, `advances`,
+  `deductions`, `leaves` (GET+POST). `/payroll/payments` is GET with an
+  `include_archived` filter, ordered by id desc.
+- `_ChallanRow` (`sales.py`) passes `None` (not `""`) for null `status`;
+  `SalesChallanSchema.challan_date`/`status`/`created_at` are optional.
+
 ## Tests
 
 - `python -m pytest` (full suite), `python -m pytest backend/tests/test_x.py`
@@ -86,12 +121,9 @@ no `head`, no `grep -E`; use `;` chaining and `Select-String`.
   `testpaths = ["backend/tests"]`, `addopts = "-q --strict-markers
   --strict-config"`, `filterwarnings = ["error::DeprecationWarning:backend.*"]`.
   Fix the warning, don't silence it.
-- No `TestClient`: tests call route/service functions directly with an explicit
-  session, e.g. `main.finished_stock_balance(db)`.
-- Ruff gate is green (`ruff check .` passes). Per-file-ignores in
-  `pyproject.toml` are triaged with reasons — fix real findings, don't widen
-  ignores. CI (`tests.yml`, windows-latest, py3.12) requires pytest; ruff is
-  informational (`continue-on-error`).
+- Ruff is informational in CI (`continue-on-error`); pytest is the gate.
+  Per-file-ignores in `pyproject.toml` are triaged with reasons — fix real
+  findings, don't widen ignores.
 
 ## Build (`scripts/build.py`)
 
@@ -144,8 +176,6 @@ no `head`, no `grep -E`; use `;` chaining and `Select-String`.
   `POST /auth/register` (username ≥ 3 chars) →
   `POST /auth/login?username=&password=` → response field is `access_token`.
   For browser QA seed `localStorage.mf_token` + `mf_user`.
-- Mutating methods (PUT/PATCH/DELETE) require the **editor claim**; plain login
-  has it off — enable via `POST /auth/editor-mode {"enabled":true}`.
 
 ## Graphify (inactive)
 

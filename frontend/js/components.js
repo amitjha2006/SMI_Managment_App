@@ -1213,12 +1213,21 @@ window.UI = (function () {
     catch (e) { return null; }
   }
 
-  // Shared money display
+  // Shared money display: Indian rupee sign, two decimals
   function money(v) {
     if (v === null || v === undefined || v === "") return "--";
     const n = parseFloat(v);
     if (isNaN(n)) return "--";
-    return "Rs. " + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return "₹ " + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // Shared quantity/weight display that always carries its unit.
+  // e.g. qtyUnit(98.001, "kg") -> "98.001 kg"; null -> "--"
+  function qtyUnit(v, unit) {
+    if (v === null || v === undefined || v === "") return "--";
+    const n = parseFloat(v);
+    if (isNaN(n)) return "--";
+    return String(Math.round(n * 1000) / 1000) + " " + (unit || "");
   }
 
   // Shared quantity/weight/percent display
@@ -1394,12 +1403,11 @@ window.UI = (function () {
     return `${yyyy}-${mm}-${dd}`;
   }
 
-  return {
-    notify, api, renderTable, confirmDialog, infoDialog, promptDialog, setLoading, submitGuard,
+  return { notify, api, renderTable, confirmDialog, infoDialog, promptDialog, setLoading, submitGuard,
     fieldError: showFieldErrors, clearFieldErrors,
     fyStartDate, inCurrentFy, fyStartStr, applyFyStart, dropInvertedRange, inDateRange,
     applySearchDeepLink, dateWithTime, dateTimeText, fmtDateTime, fmtDay,
-    quickSelect, searchSuggest, sortRows, sortArrow, tsKey, money, trimNum, qty2, figBox,
+    quickSelect, searchSuggest, sortRows, sortArrow, tsKey, money, trimNum, qty2, qtyUnit, figBox,
     sortByName, docNumKey, formatError, download, downloadBlob, copyText,
     parseSizeNameToKg, suggestSizeName, bindSizeWeightAuto, fixLooseWeight,
     resetDraggable, saveFilterState, loadFilterState,

@@ -181,7 +181,7 @@ def test_first_registered_user_becomes_admin(db):
     an admin locked the installer out of their own fresh install, permanently.
     """
     from backend.app.schemas import UserCreate
-    from backend.main import register
+    from backend.app.routes.auth import register
 
     req = type("R", (), {"headers": {}, "client": None})()
     # Deliberately ask for the weakest role; the server must override it.
@@ -200,7 +200,7 @@ def test_bootstrap_role_is_forced_not_merely_defaulted(db):
     """A client asking for admin on a fresh install gets admin; asking for
     viewer still gets admin. Later users are unaffected (route is closed)."""
     from backend.app.schemas import UserCreate
-    from backend.main import register
+    from backend.app.routes.auth import register
 
     req = type("R", (), {"headers": {}, "client": None})()
     register(UserCreate(username="owner_a", password="secret123", role="admin"), req, db)
@@ -219,7 +219,7 @@ def test_register_still_rejects_duplicate_username(db):
     from fastapi import HTTPException
 
     from backend.app.schemas import UserCreate
-    from backend.main import register
+    from backend.app.routes.auth import register
 
     _mkuser(db, "taken_name", "admin")
     req = type("R", (), {"headers": {}, "client": None})()

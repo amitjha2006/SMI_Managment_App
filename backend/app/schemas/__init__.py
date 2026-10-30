@@ -696,7 +696,7 @@ class SalesChallanCreate(SalesChallanBase):
 class SalesChallanSchema(SalesChallanBase):
     id: int
     challan_number: str
-    status: ChallanStatus
+    status: ChallanStatus | None = None
     total_weight: Decimal
     total_price: Decimal
     paid_amount: Decimal
@@ -719,7 +719,8 @@ class SalesChallanSchema(SalesChallanBase):
     # Server-rendered so the printed wording is defined in one place.
     total_in_words: str | None = None
     items: list[SalesChallanItemSchema]
-    created_at: datetime
+    challan_date: datetime | None = None
+    created_at: datetime | None = None
     is_archived: bool = False
     archived_at: datetime | None = None
     archived_by: int | None = None

@@ -54,7 +54,7 @@ def post_challan_sales_movements(db: Session, challan, items) -> bool:
                 movement_type=FinishedProductMovementType.SALES,
                 reference_type="sales_challan",
                 reference_id=challan.id,
-                quantity=Decimal(str(-(item.weight or 0))),  # Negative for sales (deduction)
+                quantity=Decimal(str(item.weight or 0)),  # Positive; balance endpoint deducts SALES qty via stock_kg - out_kg
                 rate_per_kg=Decimal(str(item.rate_per_kg or 0)),
                 notes=f"Sales challan {challan.challan_number}",
             )

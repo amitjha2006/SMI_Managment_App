@@ -111,6 +111,8 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     sold_all = Decimal("0")
     prod_type = FinishedProductMovementType.PRODUCTION
     sale_type = FinishedProductMovementType.SALES
+    adj_type = FinishedProductMovementType.ADJUSTMENT
+    adj_all = Decimal("0")
     for m in (
         db.query(FinishedProductStockMovement)
         .filter(FinishedProductStockMovement.movement_type == prod_type)
@@ -129,7 +131,13 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         sold_all += q
         if in_month(m.created_at):
             sold_month += q
-    finished_kg = produced_all - sold_all
+    for m in (
+        db.query(FinishedProductStockMovement)
+        .filter(FinishedProductStockMovement.movement_type == adj_type)
+        .all()
+    ):
+        adj_all += m.quantity or Decimal("0")
+    finished_kg = produced_all - sold_all + adj_all
 
     # Finished packets: per-size balance (kg) divided by that size's weight.
     finished_packets = Decimal("0")
@@ -137,6 +145,8 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     for m in db.query(FinishedProductStockMovement).all():
         q = m.quantity or Decimal("0")
         if m.movement_type == FinishedProductMovementType.PRODUCTION:
+            balance_by_size[m.packaging_size_id] += q
+        elif m.movement_type == FinishedProductMovementType.ADJUSTMENT:
             balance_by_size[m.packaging_size_id] += q
         elif m.movement_type == FinishedProductMovementType.SALES:
             balance_by_size[m.packaging_size_id] -= q
@@ -171,18 +181,27 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     total_dues = sum(b for b in dues.values() if b > 0)
     open_receivables = sum(1 for b in dues.values() if b > 0)
     d30 = d60 = over60 = 0
+    receivables_overdue_count = 0
+    receivables_overdue_amount = 0.0
     for ch in db.query(SalesChallan).filter(SalesChallan.is_archived == False).all():  # noqa: E712
         bal = dues.get(ch.id, 0)
         if bal <= 0:
             continue
-        days = (now - ch.challan_date).days if ch.challan_date else 0
+        # Skip drafts: they are not yet receivable.
+        if ch.status == "DRAFT":
+            continue
+        days = (now.date() - ch.challan_date.date()).days if ch.challan_date else 0
         if days <= RECEIVABLE_AGING_D30_DAYS:
             d30 += 1
         elif days <= RECEIVABLE_AGING_D60_DAYS:
             d60 += 1
         else:
             over60 += 1
+        if days > RECEIVABLE_AGING_D30_DAYS:
+            receivables_overdue_count += 1
+            receivables_overdue_amount += float(bal)
     receivables_aging = {"d30": d30, "d60": d60, "over60": over60}
+    receivables_overdue = {"count": receivables_overdue_count, "amount": receivables_overdue_amount}
 
     # Supplier payable (unpaid purchase invoices)
     supplier_payable = (
@@ -208,11 +227,11 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
             payables_aging["d60"] += 1
         else:
             payables_aging["over60"] += 1
-        if days > 0:
+        if days > RECEIVABLE_AGING_D30_DAYS:
             payables_overdue["count"] += 1
             payables_overdue["amount"] += float(inv.outstanding_amount or 0)
 
-    receivables_overdue = d60 + over60
+    receivables_overdue = {"count": receivables_overdue_count, "amount": receivables_overdue_amount}
 
     # Ready to dispatch: confirmed/paid challans not yet dispatched or delivered
     ready_to_dispatch = (
@@ -568,11 +587,20 @@ def list_dashboard_shares(request: Request, db: Session = Depends(get_db)):
 
 @router.delete("/dashboard/shares/{link_id}")
 def revoke_dashboard_share(link_id: str, request: Request, db: Session = Depends(get_db)):
-    """Revoke a public dashboard share link (admin/manager)."""
+    """Revoke a public dashboard share link.
+
+    Managers may revoke only their own links; admins may revoke anything.
+    The link is hard-deleted so a cancelled share cannot survive.
+    """
+    user, role = _request_user_and_role(db, request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
     link = db.query(DashboardShare).filter(DashboardShare.link_id == link_id).first()
     if not link:
         raise HTTPException(status_code=404, detail="Share link not found")
-    link.is_active = False
+    if role != "admin" and link.created_by != user.id:
+        raise HTTPException(status_code=403, detail="Not the owner of this share link")
+    db.delete(link)
     _audit(
         db,
         request,
@@ -580,8 +608,8 @@ def revoke_dashboard_share(link_id: str, request: Request, db: Session = Depends
         "revoke",
         record=link,
         record_type="dashboard_share",
-        old_values={"is_active": True},
-        new_values={"is_active": False, "link_id": link_id},
+        old_values={"is_active": True, "link_id": link_id},
+        new_values={"link_id": link_id},
     )
     db.commit()
     return {"status": "revoked", "link_id": link_id}

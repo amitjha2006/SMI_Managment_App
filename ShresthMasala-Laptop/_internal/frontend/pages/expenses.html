@@ -18,7 +18,7 @@
       </div>
       <div class="form-row">
         <div class="form-group"><label>Description</label><input id="exp-desc" list="exp-desc-list" placeholder="Type new, or pick from history" autocomplete="off" required /><datalist id="exp-desc-list"></datalist></div>
-        <div class="form-group"><label>Amount</label><input id="exp-amt" type="number" step="0.01" min="0" required /></div>
+        <div class="form-group"><label>Amount</label><div style="display:flex; align-items:stretch; gap:0;"><span class="rupee-prefix">₹</span><input id="exp-amt" type="number" step="0.01" min="0" class="money-input" required style="flex:1; min-width:0;" /></div></div>
         <div class="form-group"><label>Payment Mode</label>
           <select id="exp-mode">
             <option value="cash">Cash</option>

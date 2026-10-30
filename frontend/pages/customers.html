@@ -34,8 +34,8 @@
         <div class="form-group"><label>Notes</label><input id="cust-notes" /></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Opening Balance</label><input id="cust-bal" type="number" step="0.01" value="0" /></div>
-        <div class="form-group"><label>Credit Limit (₹, 0 = unlimited)</label><input id="cust-limit" type="number" step="0.01" min="0" value="0" title="Confirming a challan past this outstanding is refused unless Editor Mode is on" /></div>
+        <div class="form-group"><label>Opening Balance</label><div style="display:flex; align-items:stretch; gap:0;"><span class="rupee-prefix">₹</span><input id="cust-bal" type="number" step="0.01" value="0" class="money-input" style="flex:1; min-width:0;" /></div></div>
+        <div class="form-group"><label>Credit Limit (₹, 0 = unlimited)</label><div style="display:flex; align-items:stretch; gap:0;"><span class="rupee-prefix">₹</span><input id="cust-limit" type="number" step="0.01" min="0" value="0" class="money-input" style="flex:1; min-width:0;" title="Confirming a challan past this outstanding is refused unless Editor Mode is on" /></div></div>
       </div>
       <div style="display:flex; gap:10px; margin-top:8px;">
         <button type="submit" class="btn btn-primary" id="cust-save-btn">Save</button>

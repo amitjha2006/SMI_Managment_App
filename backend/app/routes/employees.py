@@ -79,7 +79,7 @@ def update_employee(employee_id: int, employee: EmployeeSchema, request: Request
     if not e:
         raise HTTPException(status_code=404, detail="Employee not found")
     _reject_if_archived(e, "employee")
-    reason = _change_reason(request)
+    reason = ""
     data = employee.dict(exclude_unset=True)
     for field, value in data.items():
         if value is not None:
@@ -95,7 +95,7 @@ def archive_employee(employee_id: int, request: Request, db: Session = Depends(g
     e = db.query(Employee).filter(Employee.id == employee_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="Employee not found")
-    reason = _change_reason(request)
+    reason = ""
     if not _archive_record(db, request, e, "employees", "employee"):
         raise HTTPException(status_code=409, detail="Employee already archived")
     _audit(db, request, "employees", "archive", record=e, record_type="employee", old_values={"is_active": True, "is_archived": False}, new_values={"is_active": False, "is_archived": True}, notes=reason)
@@ -108,7 +108,7 @@ def restore_employee(employee_id: int, request: Request, db: Session = Depends(g
     e = db.query(Employee).filter(Employee.id == employee_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="Employee not found")
-    reason = _change_reason(request)
+    reason = ""
     if not _restore_record(db, request, e, "employees", "employee"):
         raise HTTPException(status_code=409, detail="Employee is not archived")
     _audit(db, request, "employees", "restore", record=e, record_type="employee", old_values={"is_archived": True}, new_values={"is_archived": False}, notes=reason)
@@ -116,7 +116,6 @@ def restore_employee(employee_id: int, request: Request, db: Session = Depends(g
     return {"status": "restored", "id": employee_id}
 
 
-# Attendance
 @router.get("/attendance")
 def list_attendance(
     employee_id: int | None = None,
@@ -200,7 +199,7 @@ def list_advances(employee_id: int | None = None, db: Session = Depends(get_db))
     q = db.query(EmployeeAdvance)
     if employee_id:
         q = q.filter(EmployeeAdvance.employee_id == employee_id)
-    return q.order_by(EmployeeAdvance.date.desc()).all()
+    return q.order_by(EmployeeAdvance.given_date.desc()).all()
 
 
 @router.post("/advances")
@@ -272,11 +271,13 @@ def list_payroll(
 
 
 @router.post("/payroll/run")
-def run_payroll(payload: dict, request: Request, db: Session = Depends(get_db)):
-    """Run payroll for a period (admin/manager only)."""
-    period_start = (payload or {}).get("period_start")
-    period_end = (payload or {}).get("period_end")
-    employee_ids = (payload or {}).get("employee_ids")  # optional: specific employees
+def run_payroll(body: dict, request: Request, db: Session = Depends(get_db), period: str | None = None):
+    """Run payroll for a period (admin/manager only). Reads period_start,
+    period_end and optional employee_ids from the body. fall back to the current month if no period is given."""
+    payload = body or {}
+    period_start = payload.get("period_start")
+    period_end = payload.get("period_end")
+    employee_ids = payload.get("employee_ids")  # optional: specific employees
     if not period_start or not period_end:
         raise HTTPException(status_code=400, detail="period_start and period_end required")
 
@@ -351,3 +352,100 @@ def archive_payroll_payment(payment_id: int, request: Request, db: Session = Dep
     _audit(db, request, "payroll", "archive", record=pay, record_type="salary_payment", old_values={"is_archived": False}, new_values={"is_archived": True}, notes=reason)
     db.commit()
     return {"status": "archived", "id": payment_id}
+
+
+# Employee-scoped routes: frontend calls /employees/{id}/attendance etc.
+@router.get("/employees/{employee_id}/attendance")
+def list_attendance_for_employee(
+    employee_id: int,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    db: Session = Depends(get_db),
+):
+    return list_attendance(employee_id, from_date, to_date, db)
+
+
+@router.get("/employees/{employee_id}/advances")
+def list_advances_for_employee(
+    employee_id: int,
+    db: Session = Depends(get_db),
+):
+    return list_advances(employee_id, db)
+
+
+@router.get("/employees/{employee_id}/deductions")
+def list_deductions_for_employee(
+    employee_id: int,
+    db: Session = Depends(get_db),
+):
+    return list_deductions(employee_id, db)
+
+
+@router.get("/employees/{employee_id}/leaves")
+def list_leaves_for_employee(
+    employee_id: int,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    db: Session = Depends(get_db),
+):
+    return list_leaves(employee_id, from_date, to_date, db)
+
+
+@router.post("/employees/{employee_id}/attendance")
+def record_attendance_for_employee(
+    employee_id: int,
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    payload = dict(payload or {})
+    payload.setdefault("employee_id", employee_id)
+    return record_attendance(payload, request, db)
+
+
+@router.post("/employees/{employee_id}/advances")
+def record_advance_for_employee(
+    employee_id: int,
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    payload = dict(payload or {})
+    payload.setdefault("employee_id", employee_id)
+    return record_advance(payload, request, db)
+
+
+@router.post("/employees/{employee_id}/deductions")
+def record_deduction_for_employee(
+    employee_id: int,
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    payload = dict(payload or {})
+    payload.setdefault("employee_id", employee_id)
+    return record_deduction(payload, request, db)
+
+
+@router.post("/employees/{employee_id}/leaves")
+def record_leave_for_employee(
+    employee_id: int,
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    payload = dict(payload or {})
+    payload.setdefault("employee_id", employee_id)
+    return record_leave(payload, request, db)
+
+
+# Payroll payments list (frontend calls GET /payroll/payments?include_archived=false)
+@router.get("/payroll/payments")
+def list_payroll_payments(
+    include_archived: bool = False,
+    db: Session = Depends(get_db),
+):
+    q = db.query(SalaryPayment)
+    if not include_archived:
+        q = q.filter(SalaryPayment.is_archived == False)  # noqa: E712
+    return q.order_by(SalaryPayment.id.desc()).all()

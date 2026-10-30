@@ -5,7 +5,7 @@
 
 :root {
   /* Surfaces — neutral grey-blue base so white cards pop */
-  --color-bg: #e8edf3;
+  --color-bg: #e9eef5;
   --color-bg-2: #dce3ec;
   --color-surface: #ffffff;
   --color-surface-alt: #eff3f8;
@@ -272,7 +272,7 @@ body { display: flex; min-height: 100vh; }
   border-radius: var(--radius);
   box-shadow: var(--shadow-card);
   border: 1px solid var(--color-border);
-  padding: 20px;
+  padding: 16px;
   margin-bottom: 24px;
 }
 .card h3 { font-size: 16px; font-weight: 600; margin-bottom: 12px; letter-spacing: 0.2px; }
@@ -510,7 +510,7 @@ body { display: flex; min-height: 100vh; }
 .table-wrap table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .table-wrap th, .table-wrap td {
   padding: 11px 14px; text-align: left;
-  border-bottom: 1px solid var(--color-border);
+  border: 1px solid var(--color-border);
 }
 .table-wrap th {
   font-size: 10.5px; font-weight: 700; color: #ffffff;
@@ -643,6 +643,18 @@ body { display: flex; min-height: 100vh; }
   background: var(--color-success-soft); color: var(--color-success);
   border: 1px solid rgba(5, 150, 105, 0.2);
 }
+.badge-danger {
+  background: #fee2e2; color: #991b1b;
+  border: 1px solid rgba(153, 27, 27, 0.2);
+}
+.badge-warning {
+  background: #fef3c7; color: #92400e;
+  border: 1px solid rgba(146, 64, 14, 0.2);
+}
+.badge-success {
+  background: #d1fae5; color: #065f46;
+  border: 1px solid rgba(6, 95, 70, 0.2);
+}
 
 /* Dark mode badge adjustments */
 [data-theme="dark"] .badge-draft { background: #075985; color: #bae6fd; border-color: #38bdf8; }
@@ -705,7 +717,7 @@ body { display: flex; min-height: 100vh; }
 .stat-card {
   position: relative; overflow: hidden;
   background: var(--color-surface);
-  border-radius: var(--radius); padding: 16px;
+  border-radius: var(--radius); padding: 14px;
   box-shadow: var(--shadow-card);
   border: 1px solid var(--color-border);
   transition: transform var(--duration-fast), box-shadow var(--duration-fast);
@@ -727,7 +739,7 @@ body { display: flex; min-height: 100vh; }
   padding: 8px; border-radius: 8px;
 }
 .stat-card .stat-value {
-  font-size: 26px; font-weight: 700; color: var(--color-text); letter-spacing: -0.5px;
+  font-size: 24px; font-weight: 700; color: var(--color-text); letter-spacing: -0.5px;
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
 }
@@ -1045,3 +1057,7 @@ body.editor-off .card [data-approve]:hover { opacity: 0.4; }
 
 /* Editor toggle ON dark */
 [data-theme="dark"] .editor-toggle.editor-on { color: #fbbf24; border-color: #f59e0b; }
+
+[data-theme="dark"] .badge-danger { color: #fca5a5; }
+[data-theme="dark"] .badge-warning { color: #fcd34d; }
+[data-theme="dark"] .badge-success { color: #86efac; }

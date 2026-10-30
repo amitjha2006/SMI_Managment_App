@@ -51,7 +51,7 @@ def update_supplier(supplier_id: int, update: SupplierUpdate, request: Request, 
     if not s:
         raise HTTPException(status_code=404, detail="Supplier not found")
     _reject_if_archived(s, "supplier")
-    reason = _change_reason(request)
+    reason = ""
     old = {"name": s.name, "contact_number": s.contact_number, "address": s.address, "gstin": s.gstin, "email": s.email}
     data = update.dict(exclude_unset=True)
     for field, value in data.items():
@@ -68,7 +68,7 @@ def delete_supplier(supplier_id: int, request: Request, db: Session = Depends(ge
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Supplier not found")
-    reason = _change_reason(request)
+    reason = ""
     if not _archive_record(db, request, s, "suppliers", "supplier"):
         raise HTTPException(status_code=409, detail="Supplier already archived")
     _audit(db, request, "suppliers", "archive", record=s, record_type="supplier", old_values={"is_active": True, "is_archived": False}, new_values={"is_active": False, "is_archived": True}, notes=reason)
@@ -81,7 +81,7 @@ def restore_supplier(supplier_id: int, request: Request, db: Session = Depends(g
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Supplier not found")
-    reason = _change_reason(request)
+    reason = ""
     if not _restore_record(db, request, s, "suppliers", "supplier"):
         raise HTTPException(status_code=409, detail="Supplier is not archived")
     _audit(db, request, "suppliers", "restore", record=s, record_type="supplier", old_values={"is_archived": True}, new_values={"is_archived": False}, notes=reason)
@@ -90,7 +90,7 @@ def restore_supplier(supplier_id: int, request: Request, db: Session = Depends(g
 
 
 # Cash movements
-@router.get("/suppliers/{supplier_id}/cash")
+@router.post("/suppliers/{supplier_id}/cash")
 def supplier_cash_movements(supplier_id: int, db: Session = Depends(get_db)):
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s:
@@ -124,6 +124,7 @@ def void_supplier_cash(supplier_id: int, movement_id: int, request: Request, db:
         raise HTTPException(status_code=409, detail="Already voided")
     m.voided = True
     m.voided_at = _ist_wall()
-    _audit(db, request, "suppliers", "cash_void", record=m, record_type="cash_movement", old_values={"voided": False}, new_values={"voided": True})
+    reason = _change_reason(request)
+    _audit(db, request, "suppliers", "cash_void", record=m, record_type="cash_movement", old_values={"voided": False}, new_values={"voided": True}, notes=reason)
     db.commit()
     return {"status": "voided", "id": movement_id}

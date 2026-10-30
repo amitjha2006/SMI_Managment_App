@@ -49,7 +49,7 @@ def create_raw_material(material: RawMaterialCreate, request: Request, db: Sessi
 @router.get("/raw-materials/{material_id}", response_model=RawMaterialSchema)
 def get_raw_material(material_id: int, db: Session = Depends(get_db)):
     m = db.query(RawMaterial).filter(RawMaterial.id == material_id).first()
-    if not m:
+    if not m or not m.is_active:
         raise HTTPException(status_code=404, detail="Raw material not found")
     return m
 
@@ -57,9 +57,8 @@ def get_raw_material(material_id: int, db: Session = Depends(get_db)):
 @router.put("/raw-materials/{material_id}", response_model=RawMaterialSchema)
 def update_raw_material(material_id: int, update: RawMaterialUpdate, request: Request, db: Session = Depends(get_db)):
     m = db.query(RawMaterial).filter(RawMaterial.id == material_id).first()
-    if not m:
+    if not m or not m.is_active:
         raise HTTPException(status_code=404, detail="Raw material not found")
-    _reject_if_archived(m, "raw material")
     params = getattr(request, "query_params", None)
     reason = (params.get("reason") or "").strip() if params else ""
     old = {"name": m.name, "category_id": m.category_id, "unit": m.unit, "current_stock": m.current_stock, "threshold_stock": m.threshold_stock, "watch_stock": m.watch_stock, "hsn_code": m.hsn_code}
@@ -78,12 +77,15 @@ def delete_raw_material(material_id: int, request: Request, db: Session = Depend
     m = db.query(RawMaterial).filter(RawMaterial.id == material_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Raw material not found")
-    reason = _change_reason(request)
-    if not _archive_record(db, request, m, "raw_materials", "raw_material"):
-        raise HTTPException(status_code=409, detail="Raw material already archived")
-    _audit(db, request, "raw_materials", "archive", record=m, record_type="raw_material", old_values={"is_active": True, "is_archived": False}, new_values={"is_active": False, "is_archived": True}, notes=reason)
+    if not m.is_active:
+        return {"status": "already deleted", "id": material_id}
+    reason = ""
+    m.is_active = False
+    m.is_archived = True
+    m.archived_at = _ist_wall()
+    _audit(db, request, "raw_materials", "archive", record=m, record_type="raw_material", old_values={"is_active": True}, new_values={"is_active": False, "is_archived": True}, notes=reason)
     db.commit()
-    return {"status": "archived", "id": material_id}
+    return {"status": "deleted", "id": material_id}
 
 
 @router.post("/raw-materials/{material_id}/restore")
@@ -91,7 +93,7 @@ def restore_raw_material(material_id: int, request: Request, db: Session = Depen
     m = db.query(RawMaterial).filter(RawMaterial.id == material_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Raw material not found")
-    reason = _change_reason(request)
+    reason = ""
     if not _restore_record(db, request, m, "raw_materials", "raw_material"):
         raise HTTPException(status_code=409, detail="Raw material is not archived")
     _audit(db, request, "raw_materials", "restore", record=m, record_type="raw_material", old_values={"is_archived": True}, new_values={"is_archived": False}, notes=reason)

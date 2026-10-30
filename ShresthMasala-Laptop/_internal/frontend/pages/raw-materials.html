@@ -28,7 +28,7 @@
         <div class="form-group"><label>Opening Stock</label><input id="raw-opening" type="number" step="0.001" value="0" min="0" /></div>
         <div class="form-group"><label>Threshold Stock</label><input id="raw-threshold" type="number" step="0.001" value="0" min="0" /></div>
         <div class="form-group"><label>Reorder Level</label><input id="raw-reorder" type="number" step="0.001" value="0" min="0" /></div>
-        <div class="form-group"><label>Purchase Rate</label><input id="raw-rate" type="number" step="0.01" value="0" min="0" /></div>
+        <div class="form-group"><label>Purchase Rate</label><div style="display:flex; align-items:stretch; gap:0;"><span class="rupee-prefix">₹</span><input id="raw-rate" type="number" step="0.01" value="0" min="0" class="money-input" style="flex:1; min-width:0;" /></div></div>
       </div>
       <div class="form-row">
         <div class="form-group"><label>HSN code</label><input id="raw-hsn" type="text" maxlength="12" list="hsn-raw-list" placeholder="e.g. 09092100 — pick or type" autocomplete="off" /></div>

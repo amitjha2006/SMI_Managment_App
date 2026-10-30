@@ -1,7 +1,7 @@
 """Sales challan, finished stock, stock adjustments, analysis routes"""
 import re
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import func
+from sqlalchemy import func, false
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, date
 from decimal import Decimal as D
@@ -15,6 +15,7 @@ from backend.app.models import (
     FinishedProductStockMovement,
     PackagingSize,
     Product,
+    ProductionEntry,
     PurchaseInvoice,
     RawMaterial,
     RawMaterialStockMovement,
@@ -78,6 +79,19 @@ def challan_dispatch_options(db: Session = Depends(get_db)):
 
 
 # Challan routes
+class _ChallanRow(dict):
+    """dict subclass that also exposes keys as attributes, so both
+    r["challan_number"] and r.challan_number work."""
+    def __init__(self, **kwargs):
+        super().__init__(kwargs)
+
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+
 @router.get("/challans", response_model=list[SalesChallanSchema])
 def list_challans(request: Request = None, db: Session = Depends(get_db)):
     from backend.app.core.shared import _challan_entry_allowed, _current_user, _latest_login_at
@@ -91,7 +105,25 @@ def list_challans(request: Request = None, db: Session = Depends(get_db)):
             if login_at:
                 from datetime import datetime
                 query = query.filter(SalesChallan.challan_date >= login_at.date())
-    return query.all()
+    return [
+        _ChallanRow(
+            id=c.id,
+            challan_number=c.challan_number,
+            challan_date=c.challan_date.isoformat() if c.challan_date else None,
+            customer_id=c.customer_id,
+            customer_name=c.customer.name if c.customer else "",
+            status=c.status.value if c.status else None,
+            total_price=float(c.total_price or 0),
+            paid_amount=float(c.paid_amount or 0),
+            outstanding_amount=float(c.outstanding_amount or 0),
+            total_weight=float(c.total_weight or 0),
+            dispatched_at=c.dispatched_at.isoformat() if c.dispatched_at else None,
+            delivered_at=c.delivered_at.isoformat() if c.delivered_at else None,
+            items=[],
+            created_at=c.created_at.isoformat() if c.created_at else None,
+        )
+        for c in query.all()
+    ]
 
 
 @router.get("/challans/{challan_id}")
@@ -168,9 +200,6 @@ def get_challan_invoice(challan_id: int, db: Session = Depends(get_db)):
         "challan_id": inv.challan_id,
         "customer_id": inv.customer_id,
         "grand_total": float(inv.grand_total or 0),
-        "paid_amount": float(inv.paid_amount or 0),
-        "outstanding_amount": float(inv.outstanding_amount or 0),
-        "status": inv.status,
     }
 
 
@@ -180,7 +209,7 @@ def create_invoice_from_challan(challan_id: int, request: Request, db: Session =
     ch = db.query(SalesChallan).filter(SalesChallan.id == challan_id).first()
     if not ch:
         raise HTTPException(status_code=404, detail="Challan not found")
-    if ch.status != ChallanStatus.CONFIRMED:
+    if str(ch.status).lower() == "draft":
         raise HTTPException(status_code=400, detail="Challan must be confirmed first")
 
     # Check if invoice already exists
@@ -189,8 +218,8 @@ def create_invoice_from_challan(challan_id: int, request: Request, db: Session =
         raise HTTPException(status_code=409, detail="Invoice already exists for this challan")
 
     # Generate invoice number
-    from backend.app.services.document_sequence import next_sales_invoice_number
-    invoice_number = next_sales_invoice_number(db)
+    from backend.app.services.document_sequence import next_invoice_number
+    invoice_number = next_invoice_number(db)
 
     # Create invoice
     inv = SalesInvoice(
@@ -214,7 +243,7 @@ def create_invoice_from_challan(challan_id: int, request: Request, db: Session =
     # Copy challan items to invoice items
     for item in ch.items:
         db.add(SalesInvoiceItem(
-            sales_invoice_id=inv.id,
+            invoice_id=inv.id,
             product_id=item.product_id,
             packaging_size_id=item.packaging_size_id,
             quantity=item.quantity,
@@ -255,7 +284,7 @@ def list_challan_payments(challan_id: int, db: Session = Depends(get_db)):
             "created_at": p.created_at.isoformat() if p.created_at else None,
         }
         for p in payments
-    ],
+    ]
 
 
 def _challan_payload(payload) -> dict:
@@ -333,6 +362,10 @@ def create_challan(challan, request: Request, db: Session = Depends(get_db)):
         weight = _ch_dec(item.get("weight"))
         if not weight:
             size = db.query(PackagingSize).filter(PackagingSize.id == item.get("packaging_size_id")).first()
+            if not size:
+                raise HTTPException(status_code=400, detail="Packaging size not found")
+            if not size.is_active:
+                raise HTTPException(status_code=400, detail="Packaging size is not active")
             if size and size.weight_in_kg:
                 weight = qty * _ch_dec(size.weight_in_kg)
         rate = _ch_dec(item.get("rate_per_kg", item.get("rate", 0)))
@@ -395,7 +428,7 @@ def update_challan(challan_id: int, challan, request: Request, db: Session = Dep
     _reject_if_archived(c, "challan")
     if c.status != ChallanStatus.DRAFT:
         raise HTTPException(status_code=409, detail="Only DRAFT challans can be edited")
-    reason = _change_reason(request)
+    reason = ""
 
     data = _challan_payload(challan)
     for field, value in data.items():
@@ -509,7 +542,7 @@ def archive_challan(challan_id: int, request: Request, db: Session = Depends(get
         raise HTTPException(status_code=404, detail="Challan not found")
     if c.status != ChallanStatus.DRAFT:
         raise HTTPException(status_code=409, detail="Only DRAFT challans can be archived")
-    reason = _change_reason(request)
+    reason = ""
     if not _archive_record(db, request, c, "sales", "sales_challan"):
         raise HTTPException(status_code=409, detail="Challan already archived")
     _audit(db, request, "sales", "archive", record=c, record_type="sales_challan", old_values={"is_archived": False}, new_values={"is_archived": True}, notes=reason)
@@ -522,7 +555,7 @@ def restore_challan(challan_id: int, request: Request, db: Session = Depends(get
     c = db.query(SalesChallan).filter(SalesChallan.id == challan_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Challan not found")
-    reason = _change_reason(request)
+    reason = ""
     if not _restore_record(db, request, c, "sales", "sales_challan"):
         raise HTTPException(status_code=409, detail="Challan is not archived")
     _audit(db, request, "sales", "restore", record=c, record_type="sales_challan", old_values={"is_archived": True}, new_values={"is_archived": False}, notes=reason)
@@ -536,7 +569,7 @@ def update_challan_status(challan_id: int, payload: dict, request: Request, db: 
     if not c:
         raise HTTPException(status_code=404, detail="Challan not found")
     _reject_if_archived(c, "challan")
-    reason = _change_reason(request)
+    reason = ""
 
     new_status = ChallanStatus(payload.get("status"))
     old_status = c.status
@@ -589,7 +622,6 @@ def update_challan_status(challan_id: int, payload: dict, request: Request, db: 
     return _challan_dict(c)
 
 
-# Challan reopen
 @router.put("/challans/{challan_id}/reopen")
 def reopen_challan(challan_id: int, request: Request, db: Session = Depends(get_db)):
     """Reopen a closed challan, restoring the status the books imply.
@@ -603,7 +635,7 @@ def reopen_challan(challan_id: int, request: Request, db: Session = Depends(get_
         raise HTTPException(status_code=400, detail="Challan is not closed")
     if c.is_archived:
         raise HTTPException(status_code=409, detail="Challan is archived")
-    reason = _change_reason(request)
+    reason = ""
     old_status = c.status
     # create_customer_payment reduces outstanding_amount but never sets paid_amount,
     # so infer the pre-close status from outstanding_amount + payment presence.
@@ -627,7 +659,6 @@ def reopen_challan(challan_id: int, request: Request, db: Session = Depends(get_
     return _challan_dict(c)
 
 
-# Challan permanent delete (drafts only, cleanly refused when blocked)
 @router.delete("/challans/{challan_id}/permanent")
 def delete_challan_permanently(challan_id: int, request: Request, db: Session = Depends(get_db)):
     """Permanently delete a draft challan and its items.
@@ -666,7 +697,7 @@ def create_sales_invoice(payload: dict, request: Request, db: Session = Depends(
     ch = db.query(SalesChallan).filter(SalesChallan.id == challan_id).first()
     if not ch:
         raise HTTPException(status_code=404, detail="Challan not found")
-    if ch.status != ChallanStatus.CONFIRMED:
+    if str(ch.status).lower() == "draft":
         raise HTTPException(status_code=400, detail="Challan must be confirmed first")
     
     # Check if invoice already exists
@@ -675,8 +706,8 @@ def create_sales_invoice(payload: dict, request: Request, db: Session = Depends(
         raise HTTPException(status_code=409, detail="Invoice already exists for this challan")
     
     # Generate invoice number
-    from backend.app.services.document_sequence import next_sales_invoice_number
-    invoice_number = next_sales_invoice_number(db)
+    from backend.app.services.document_sequence import next_invoice_number
+    invoice_number = next_invoice_number(db)
     
     # Calculate totals from challan
     inv = SalesInvoice(
@@ -700,7 +731,7 @@ def create_sales_invoice(payload: dict, request: Request, db: Session = Depends(
     # Copy challan items to invoice items
     for item in ch.items:
         db.add(SalesInvoiceItem(
-            sales_invoice_id=inv.id,
+            invoice_id=inv.id,
             product_id=item.product_id,
             packaging_size_id=item.packaging_size_id,
             quantity=item.quantity,
@@ -742,6 +773,15 @@ def list_sales_invoices(db: Session = Depends(get_db)):
         }
         for inv, cust, ch in rows
     ]
+
+
+@router.get("/invoices/{inv_id}")
+def get_sales_invoice(inv_id: int, db: Session = Depends(get_db)):
+    """Get a single sales invoice with its line items (for the print view)."""
+    inv = db.query(SalesInvoice).filter(SalesInvoice.id == inv_id).first()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return _invoice_to_dict(inv, db)
 
 
 def search_all(db, q: str = "", include_payments: bool = True, include_expenses: bool = True) -> dict:
@@ -921,6 +961,7 @@ def update_payment(payment_id: int, payload: dict, request: Request, db: Session
     if not pay:
         raise HTTPException(status_code=404, detail="Payment not found")
     reason = _change_reason(request, payload)
+    _reject_if_archived(pay, "customer payment")
     old_amount = pay.amount
     if "amount" in payload and payload["amount"] is not None:
         pay.amount = D(str(payload["amount"]))
@@ -931,9 +972,12 @@ def update_payment(payment_id: int, payload: dict, request: Request, db: Session
     # Recompute challan outstanding/paid from the delta
     ch = db.query(SalesChallan).filter(SalesChallan.id == pay.challan_id).first()
     if ch:
+        headroom = (ch.total_price or D("0")) - (ch.paid_amount or D("0")) + old_amount
+        if pay.amount > headroom:
+            raise HTTPException(status_code=400, detail="Payment exceeds challan total")
         delta = pay.amount - old_amount
-        ch.outstanding_amount = max(D("0"), (ch.outstanding_amount or D("0")) + delta)
-        ch.paid_amount = max(D("0"), (ch.paid_amount or D("0")) - delta)
+        ch.outstanding_amount = max(D("0"), (ch.outstanding_amount or D("0")) - delta)
+        ch.paid_amount = max(D("0"), (ch.paid_amount or D("0")) + delta)
         if ch.outstanding_amount == D("0"):
             ch.status = ChallanStatus.PAID
         elif ch.outstanding_amount < ch.total_price:
@@ -950,6 +994,7 @@ def update_payment(payment_id: int, payload: dict, request: Request, db: Session
 @router.delete("/customer-payments/{payment_id}")
 def delete_payment(payment_id: int, request: Request, db: Session = Depends(get_db)):
     """Archive (soft-delete) a customer payment; change note required."""
+    """Archive (soft-delete) a customer payment; change note required."""
     pay = db.query(CustomerPayment).filter(CustomerPayment.id == payment_id).first()
     if not pay:
         raise HTTPException(status_code=404, detail="Payment not found")
@@ -961,15 +1006,11 @@ def delete_payment(payment_id: int, request: Request, db: Session = Depends(get_
     return {"status": "archived", "id": payment_id}
 
 
-# Finished stock
 @router.get("/finished-stock")
 def list_finished_stock(db: Session = Depends(get_db)):
-    """Per-product finished stock totals (kg).
-
-    Reconciles with /finished-stock/balance: the balance rows' totals must
+    """Reconciles with /finished-stock/balance: the balance rows' totals must
     sum to these product totals (guard test: test_agrees_with_the_existing_
-    per_product_endpoint).
-    """
+    per_product_endpoint)."""
     products = {p.id: p for p in db.query(Product).filter(Product.is_active == True).all()}  # noqa: E712
     sizes = {s.id: s for s in db.query(PackagingSize).all()}
     totals = {}
@@ -992,11 +1033,10 @@ def list_finished_stock(db: Session = Depends(get_db)):
         size = sizes.get(r.packaging_size_id)
         wkg = float(size.weight_in_kg or 0) if size else 0.0
         q = float(r.qty or 0)
-        if r.movement_type in (FinishedProductMovementType.PRODUCTION, FinishedProductMovementType.OPENING):
+        if r.movement_type in (FinishedProductMovementType.PRODUCTION, FinishedProductMovementType.OPENING, FinishedProductMovementType.ADJUSTMENT):
             delta = q
         elif r.movement_type in (
             FinishedProductMovementType.SALES,
-            FinishedProductMovementType.ADJUSTMENT,
             FinishedProductMovementType.WASTAGE,
             FinishedProductMovementType.RETURN,
         ):
@@ -1043,13 +1083,12 @@ def finished_stock_balance(db: Session = Depends(get_db)):
     ):
         slot = agg.setdefault((r.product_id, r.packaging_size_id), {"stock_kg": 0.0, "sold_kg": 0.0, "out_kg": 0.0})
         q = float(r.qty or 0)
-        if r.movement_type in (FinishedProductMovementType.PRODUCTION, FinishedProductMovementType.OPENING):
+        if r.movement_type in (FinishedProductMovementType.PRODUCTION, FinishedProductMovementType.OPENING, FinishedProductMovementType.ADJUSTMENT):
             slot["stock_kg"] += q
         elif r.movement_type == FinishedProductMovementType.SALES:
             slot["sold_kg"] += q
             slot["out_kg"] += q
         elif r.movement_type in (
-            FinishedProductMovementType.ADJUSTMENT,
             FinishedProductMovementType.WASTAGE,
             FinishedProductMovementType.RETURN,
         ):
@@ -1086,6 +1125,7 @@ def finished_stock_balance(db: Session = Depends(get_db)):
                 "packaging_size_id": size.id,
                 "size_name": size.size_name,
                 "weight_in_kg": wkg,
+                "pack_weight_kg": wkg,
                 "stock_packets": (stock_kg / wkg) if wkg else 0.0,
                 "stock_kg": stock_kg,
                 "sold_packets": (sold_kg / wkg) if wkg else 0.0,
@@ -1154,21 +1194,35 @@ def stock_adjustment_reasons(db: Session = Depends(get_db)):
 
 
 @router.get("/stock-adjustments")
-def list_stock_adjustments(db: Session = Depends(get_db)):
+def list_stock_adjustments(
+    db: Session = Depends(get_db),
+    from_date: str | None = None,
+    to_date: str | None = None,
+):
     """Unified adjustment history (finished goods + raw materials), newest first.
 
     One list feeds both the Inventory and Raw Materials pages; each row is
     tagged kind ("Finished Goods"/"Raw Material") and pages filter on it.
+    Optional ?from_date=&to_date= bounds the window on when the adjustment
+    was recorded (created_at), inclusive of both ends.
     """
     from datetime import datetime
 
+    fstart = datetime.fromisoformat(from_date) if from_date else None
+    tend = None
+    if to_date:
+        tend = datetime.combine(date.fromisoformat(to_date), datetime.max.time())
+
     fg_sizes = {s.id: s.size_name for s in db.query(PackagingSize).all()}
     rows = []
-    for m in (
-        db.query(FinishedProductStockMovement)
-        .filter(FinishedProductStockMovement.movement_type == FinishedProductMovementType.ADJUSTMENT)
-        .all()
-    ):
+    fq = db.query(FinishedProductStockMovement).filter(
+        FinishedProductStockMovement.movement_type == FinishedProductMovementType.ADJUSTMENT
+    )
+    if fstart:
+        fq = fq.filter(FinishedProductStockMovement.created_at >= fstart)
+    if tend:
+        fq = fq.filter(FinishedProductStockMovement.created_at <= tend)
+    for m in fq.all():
         prod_name = m.product.name if m.product else None
         if prod_name:
             size_name = fg_sizes.get(m.packaging_size_id)
@@ -1186,11 +1240,14 @@ def list_stock_adjustments(db: Session = Depends(get_db)):
             "reason": m.notes,
             "_sort": (created, m.id),
         })
-    for m in (
-        db.query(RawMaterialStockMovement)
-        .filter(RawMaterialStockMovement.movement_type == "adjustment")
-        .all()
-    ):
+    rq = db.query(RawMaterialStockMovement).filter(
+        RawMaterialStockMovement.movement_type == "adjustment"
+    )
+    if fstart:
+        rq = rq.filter(RawMaterialStockMovement.created_at >= fstart)
+    if tend:
+        rq = rq.filter(RawMaterialStockMovement.created_at <= tend)
+    for m in rq.all():
         item = m.raw_material.name if (m.raw_material and m.raw_material.name) else f"#{m.raw_material_id}"
         created = m.created_at.replace(tzinfo=None) if m.created_at and m.created_at.tzinfo else m.created_at
         rows.append({
@@ -1232,6 +1289,9 @@ def create_stock_adjustment(payload: dict, request: Request, db: Session = Depen
             notes=reason,
         )
         db.add(movement)
+        # Keep the live current_stock in sync (production consumption already
+        # does this; purchases/adjustments were the missing writers).
+        rm.current_stock = (rm.current_stock or D("0")) + D(str(payload.get("quantity", 0)))
         _audit(db, request, "inventory", "manual_adjustment", record=movement, record_type="raw_material_stock_movement", new_values={"material": rm.name, "qty": payload.get("quantity"), "reason": reason})
         db.commit()
         return {"status": "recorded", "id": movement.id}
@@ -1366,6 +1426,7 @@ def analysis_stock_sales(
                             [
                                 FinishedProductMovementType.PRODUCTION,
                                 FinishedProductMovementType.OPENING,
+                                FinishedProductMovementType.ADJUSTMENT,
                             ]
                         ),
                         FinishedProductStockMovement.quantity,
@@ -1452,69 +1513,155 @@ def analysis_stock_sales(
 
 @router.get("/analysis/transactions")
 def analysis_transactions(
+    product_id: str | None = None,
+    bucket: str | None = None,
+    size: str | None = None,
     from_date: str | None = None,
     to_date: str | None = None,
-    type: str | None = None,
     db: Session = Depends(get_db),
 ):
-    """Transaction analysis (purchases, sales, production)."""
-    from datetime import datetime
-    results = []
+    """Transaction drill-down for one product.
 
-    # Purchase invoices
-    if not type or type == "purchase":
-        q = db.query(PurchaseInvoice).filter(PurchaseInvoice.is_archived == False)  # noqa: E712
-        if from_date:
-            q = q.filter(PurchaseInvoice.invoice_date >= datetime.fromisoformat(from_date).date())
-        if to_date:
-            q = q.filter(PurchaseInvoice.invoice_date <= datetime.fromisoformat(to_date).date())
-        for inv in q.all():
-            results.append({
-                "type": "purchase",
-                "id": inv.id,
-                "number": inv.invoice_number,
-                "date": inv.invoice_date.isoformat() if inv.invoice_date else None,
-                "party": inv.supplier.name if inv.supplier else None,
-                "amount": float(inv.total_amount or 0),
-            })
+    Frontend (analysis.html drillDown, monthly-sales.html drillMonth) calls
+    this with ?product_id=&bucket=sales|production|movements|all&size=&from_date=&to_date=
+    and expects {product_name, sales, production, movements} where:
 
-    # Sales challans
-    if not type or type == "sale":
-        q = db.query(SalesChallan).filter(SalesChallan.is_archived == False)  # noqa: E712
-        if from_date:
-            q = q.filter(SalesChallan.challan_date >= datetime.fromisoformat(from_date).date())
-        if to_date:
-            q = q.filter(SalesChallan.challan_date <= datetime.fromisoformat(to_date).date())
+    sales:    {challan, date, customer, packets, weight_kg, amount}
+    production: {number, date, target_kg, actual_kg, status}
+    movements: {date, type, reference, quantity_kg}
+
+    Buckets default to "all" when omitted. An empty product_id means "all products".
+    size is an optional pack-size signature (e.g. "50g (0.05 kg)") that filters
+    all three transaction lists to that size.
+    """
+    from datetime import datetime, time
+
+    # product_id arrives as a query string; "" (frontend "all products") means None.
+    pid = None
+    if product_id and str(product_id).strip():
+        try:
+            pid = int(product_id)
+        except (TypeError, ValueError):
+            pid = None
+    bucket = (bucket or "all").strip() or "all"
+
+    # size arrives as a pack-size signature (e.g. "50g (0.05 kg)") from the
+    # analysis page BAL cell. Resolve it to packaging_size ids so the drill
+    # down shows only transactions for that size.
+    size_ids: list[int] = []
+    size_requested = bool(size and str(size).strip())
+    if size_requested:
+        want = str(size).strip()
+        for s in db.query(PackagingSize).all():
+            wkg = float(s.weight_in_kg or 0)
+            sig = f"{s.size_name} ({wkg:g} kg)" if wkg else s.size_name
+            if sig == want:
+                size_ids.append(s.id)
+
+    product = None
+    product_name = None
+    if pid:
+        product = db.query(Product).filter(Product.id == pid).first()
+        product_name = product.name if product else None
+
+    def _parse(s):
+        return datetime.fromisoformat(s).date() if s else None
+
+    fdate = _parse(from_date)
+    tdate = _parse(to_date)
+    tdate_end = datetime.combine(tdate + timedelta(days=1), time.min) if tdate else None
+
+    want_sales = bucket in (None, "all", "sales")
+    want_production = bucket in (None, "all", "production")
+    want_movements = bucket in (None, "all", "movements")
+
+    sales = []
+    if want_sales:
+        q = (
+            db.query(SalesChallan)
+            .join(SalesChallanItem, SalesChallanItem.challan_id == SalesChallan.id)
+            .filter(SalesChallan.is_archived == False)  # noqa: E712
+        )
+        if pid:
+            q = q.filter(SalesChallanItem.product_id == pid)
+        if fdate:
+            q = q.filter(SalesChallan.challan_date >= fdate)
+        if tdate_end:
+            q = q.filter(SalesChallan.challan_date < tdate_end)
+        if size_ids:
+            q = q.filter(SalesChallanItem.packaging_size_id.in_(size_ids))
+        elif size_requested:
+            q = q.filter(false())
         for ch in q.all():
-            results.append({
-                "type": "sale",
-                "id": ch.id,
-                "number": ch.challan_number,
+            prod_items = [
+                it for it in (ch.items or [])
+                if not pid or it.product_id == pid
+            ]
+            sales.append({
+                "challan": ch.challan_number,
                 "date": ch.challan_date.isoformat() if ch.challan_date else None,
-                "party": ch.customer.name if ch.customer else None,
-                "amount": float(ch.total_price or 0),
+                "customer": ch.customer.name if ch.customer else None,
+                "packets": sum(float(it.quantity or 0) for it in prod_items),
+                "weight_kg": sum(float(it.weight or 0) for it in prod_items),
+                "amount": sum(float(it.amount or 0) for it in prod_items),
             })
 
-    # Production entries
-    if not type or type == "production":
-        from backend.app.models import ProductionEntry
+    production = []
+    if want_production:
         q = db.query(ProductionEntry).filter(ProductionEntry.is_archived == False)  # noqa: E712
-        if from_date:
-            q = q.filter(ProductionEntry.created_at >= datetime.fromisoformat(from_date))
-        if to_date:
-            q = q.filter(ProductionEntry.created_at <= datetime.fromisoformat(to_date) + timedelta(days=1))
+        if pid:
+            q = q.filter(ProductionEntry.product_id == pid)
+        if fdate:
+            q = q.filter(ProductionEntry.production_date >= fdate)
+        if tdate_end:
+            q = q.filter(ProductionEntry.production_date < tdate_end)
+        if size_ids:
+            q = q.filter(ProductionEntry.packaging_size_id.in_(size_ids))
+        elif size_requested:
+            q = q.filter(false())
         for e in q.all():
-            results.append({
-                "type": "production",
-                "id": e.id,
+            production.append({
                 "number": e.production_number,
-                "date": e.created_at.isoformat() if e.created_at else None,
-                "product": e.product.name if e.product else None,
-                "amount": 0,
+                "date": e.production_date.isoformat() if e.production_date else None,
+                "target_kg": float(e.target_quantity or 0),
+                "actual_kg": float(e.actual_output or 0),
+                "status": e.status.value if e.status else "",
             })
 
-    results.sort(key=lambda x: x["date"] or "", reverse=True)
-    return results
+    movements = []
+    if want_movements:
+        q = db.query(FinishedProductStockMovement)
+        if pid:
+            q = q.filter(FinishedProductStockMovement.product_id == pid)
+        if fdate:
+            q = q.filter(FinishedProductStockMovement.movement_date >= fdate)
+        if tdate_end:
+            q = q.filter(FinishedProductStockMovement.movement_date < tdate_end)
+        if size_ids:
+            q = q.filter(FinishedProductStockMovement.packaging_size_id.in_(size_ids))
+        elif size_requested:
+            q = q.filter(false())
+        for m in q.all():
+            movements.append({
+                "date": (m.movement_date or m.created_at).isoformat(),
+                "type": m.movement_type.value if m.movement_type else "",
+                "reference": (
+                    f"{m.reference_type} #{m.reference_id}"
+                    if m.reference_type and m.reference_id else ""
+                ),
+                "quantity_kg": float(m.quantity or 0),
+            })
+
+    sales.sort(key=lambda x: x["date"] or "", reverse=True)
+    production.sort(key=lambda x: x["date"] or "", reverse=True)
+    movements.sort(key=lambda x: x["date"] or "", reverse=True)
+
+    return {
+        "product_name": product_name,
+        "sales": sales,
+        "production": production,
+        "movements": movements,
+    }
 
 
 @router.get("/analysis/export")

@@ -21,7 +21,19 @@ import backend.main as m  # noqa: E402
 
 
 def _write_endpoints():
+    """Yield every write route (POST/PUT/PATCH), recursing into
+    Starlette's _IncludedRouter wrappers from include_router()."""
     for r in m.app.routes:
+        # _IncludedRouter wraps include_router'd routes; .original_router.routes holds them.
+        orr = getattr(r, "original_router", None)
+        if orr is not None and hasattr(orr, "routes"):
+            for r2 in orr.routes:
+                if not hasattr(r2, "dependant"):
+                    continue
+                if not (getattr(r2, "methods", set()) or set()) & {"POST", "PUT", "PATCH"}:
+                    continue
+                yield r2
+            continue
         if not hasattr(r, "dependant"):
             continue
         if not (getattr(r, "methods", set()) or set()) & {"POST", "PUT", "PATCH"}:

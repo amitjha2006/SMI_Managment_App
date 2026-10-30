@@ -808,7 +808,8 @@ body[data-anstyle="ink"] #an-body-table tbody td.ink-neg, body[data-anstyle="ink
     wireAnModalDismiss();
     modal.style.display = "flex";
     try {
-      const q = `?product_id=${productId}&bucket=${encodeURIComponent(bucket)}` +
+      const q = `?product_id=${productId}&bucket=all` +
+        `&size=${encodeURIComponent(bucket)}` +
         `&from_date=${encodeURIComponent(document.getElementById("an-from").value)}` +
         `&to_date=${encodeURIComponent(document.getElementById("an-to").value)}`;
       const d = await window.UI.api("/analysis/transactions" + q);
@@ -825,7 +826,9 @@ body[data-anstyle="ink"] #an-body-table tbody td.ink-neg, body[data-anstyle="ink
           // "T00:00:00"; rows entered by hand keep their real entry time.
           if (key === "date") return window.UI.fmtDateTime(v);
           if (/(amount|total|price|value)$/.test(key)) return window.UI.money(v);
-          if (/(kg|weight|quantity|packets)$/.test(key)) return window.UI.trimNum(v);
+          if (/(kg|weight)$/.test(key)) return window.UI.qtyUnit(v, "kg");
+          if (key === "packets") return window.UI.qtyUnit(v, "packets");
+          if (/quantity$/.test(key)) return window.UI.qtyUnit(v, "kg");
           return v;
         };
         return `<h4 style="margin:10px 0 6px;">${title} (${rows.length})</h4><div class="table-wrap"><table><thead><tr>` +

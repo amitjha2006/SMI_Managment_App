@@ -270,10 +270,15 @@ def _iso_ist(dt):
     if dt is None:
         return None
     try:
-        naive = dt.replace(tzinfo=None) if getattr(dt, "tzinfo", None) else dt
+        has_tz = getattr(dt, "tzinfo", None) is not None
     except Exception:
-        naive = dt
-    return naive.isoformat()
+        has_tz = False
+    if has_tz:
+        # Convert aware datetimes to IST (UTC+5:30).
+        ist = dt.astimezone(timezone(timedelta(hours=5, minutes=30)))
+        return ist.isoformat()
+    # Naive values are IST wall time already; stamp the offset.
+    return dt.replace(tzinfo=timezone(timedelta(hours=5, minutes=30))).isoformat()
 
 
 def _low_finished_sizes(db: Session) -> list:
@@ -286,16 +291,16 @@ def _low_finished_sizes(db: Session) -> list:
     so an empty size with a zero threshold still alerts.
 
     Balance is computed per packaging_size_id from stock movements:
-    PRODUCTION/OPENING add kg, SALES/MANUAL_ADJUSTMENT/WASTAGE/RETURN subtract kg.
+    PRODUCTION/OPENING/ADJUSTMENT add the signed kg, SALES/WASTAGE/RETURN subtract.
     Retired (inactive) sizes never alert.
     """
     add_types = (
         FinishedProductMovementType.PRODUCTION,
         FinishedProductMovementType.OPENING,
+        FinishedProductMovementType.ADJUSTMENT,
     )
     sub_types = (
         FinishedProductMovementType.SALES,
-        FinishedProductMovementType.ADJUSTMENT,
         FinishedProductMovementType.WASTAGE,
         FinishedProductMovementType.RETURN,
     )

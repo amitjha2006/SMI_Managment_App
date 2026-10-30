@@ -176,6 +176,50 @@ from backend.app.routes import (
 )
 from backend.app.routes import settings as settings_routes
 
+
+def _production_to_dict(entry):
+    """Serialise a production entry for test/history consumers.
+
+    Outputs come from ProductionOutput rows; legacy rows (no output rows)
+    fall back to the entry's single packaging_size_id and actual_output.
+    stage_entries are returned as model objects so callers can read
+    attributes such as .wastage_quantity.
+    """
+    session = object_session(entry)
+    outputs = []
+    for o in (entry.outputs or []):
+        ps = None
+        if session is not None:
+            ps = session.query(PackagingSize).filter(PackagingSize.id == o.packaging_size_id).first()
+        kg = float(o.quantity_kg or 0)
+        if kg == 0 and ps:
+            kg = float(o.packets or 0) * float(ps.weight_in_kg or 0)
+        outputs.append({
+            "id": o.id,
+            "packaging_size_id": o.packaging_size_id,
+            "packets": float(o.packets or 0),
+            "quantity_kg": kg,
+            "packaging_size_name": ps.size_name if ps else None,
+        })
+    if not outputs and entry.packaging_size_id and session is not None:
+        ps = session.query(PackagingSize).filter(PackagingSize.id == entry.packaging_size_id).first()
+        kg = float(entry.actual_output or 0)
+        packets = kg / float(ps.weight_in_kg) if ps and ps.weight_in_kg else 0.0
+        outputs.append({
+            "id": None,
+            "packaging_size_id": entry.packaging_size_id,
+            "packets": packets,
+            "quantity_kg": kg,
+            "packaging_size_name": ps.size_name if ps else None,
+        })
+    return {
+        "id": entry.id,
+        "production_number": entry.production_number,
+        "outputs": outputs,
+        "stage_entries": list(entry.stage_entries or []),
+    }
+
+
 # Import shared utilities (also used by route modules)
 from backend.app.core.shared import (
     _audit,
@@ -208,6 +252,24 @@ from backend.app.core.shared import (
     _ist_wall,
 )
 from backend.app.core.permissions import ADMIN_ONLY_PREFIXES
+
+_THEME_KEY = "theme"
+
+# Default empty-pouch (wrapper) weight per pack size, in kg.
+# Keyed by pack weight_in_kg; mirrors scripts/fix_pouch_weights.py POUCH_G_BY_SIZE
+# (tests/test_pouch_weight_default.py pins the two copies together).
+_DEFAULT_POUCH_KG = {
+    0.007: 0.002,  # 7g  -> 2g
+    0.05: 0.004,   # 50g -> 4g
+    0.1: 0.006,    # 100g -> 6g
+    0.175: 0.006,  # 175g -> 6g
+    0.2: 0.008,    # 200g -> 8g
+    0.25: 0.008,   # 250g -> 8g
+    0.4: 0.010,    # 400g -> 10g
+    0.5: 0.010,    # 500g -> 10g
+    1.0: 0.017,    # 1kg -> 17g
+}
+_LOOSE_POUCH_KG = 0.014  # Loose Powder pouch
 
 # Initialize database
 init_db()
@@ -342,10 +404,16 @@ update_packaging_size = products.update_packaging_size
 create_raw_material_category = raw_materials.create_raw_material_category
 create_raw_material = raw_materials.create_raw_material
 get_raw_material = raw_materials.get_raw_material
+delete_raw_material = raw_materials.delete_raw_material
+update_raw_material = raw_materials.update_raw_material
 list_raw_material_categories = raw_materials.list_raw_material_categories
 list_raw_materials = raw_materials.list_raw_materials
+delete_raw_material = raw_materials.delete_raw_material
+update_raw_material = raw_materials.update_raw_material
 list_expenses = reports.list_expenses
 list_purchase_invoices = purchase.list_purchase_invoices
+reports_summary = reports.reports_summary
+recent_transactions = reports.recent_transactions
 get_session_settings = settings_routes.get_session_settings
 update_session_settings = settings_routes.update_session_settings
 update_email_settings = settings_routes.update_email_settings
@@ -391,13 +459,14 @@ update_product_workflow = products.update_product_workflow
 get_product_help = products.get_product_help
 update_product_help = products.update_product_help
 list_hsn_codes = products.list_hsn_codes
-suggest_hsn_codes = products.suggest_hsn_codes
+suggest_hsn_codes = products.suggest_hsn_code
+suggest_hsn_code = products.suggest_hsn_code
+report_by_category = products.report_by_category
 list_product_categories = products.list_product_categories
 create_product_category = products.create_product_category
 update_product_category = products.update_product_category
 delete_product_category = products.delete_product_category
 list_print_footers = products.list_print_footers
-create_print_footer = products.create_print_footer
 update_print_footer = products.update_print_footer
 delete_print_footer = products.delete_print_footer
 packaging_rate_history = products.size_rate_history
@@ -405,6 +474,9 @@ size_rate_history = products.size_rate_history
 delete_packaging_size = products.delete_packaging_size
 set_product_help = products.update_product_help
 _attach_sizes_to_product = products._attach_sizes_to_product
+list_products = products.list_products
+list_customers = customers.list_customers
+list_suppliers = suppliers.list_suppliers
 customer_statement = customers.customer_statement
 set_editor_mode = auth.set_editor_mode
 list_import_reports = import_export.import_reports
@@ -416,6 +488,8 @@ _save_import_report = import_export._save_import_report
 
 # Reports route aliases
 sales_trend = reports.sales_trend
+analysis_monthly_sales = reports.analysis_monthly_sales
+analysis_monthly_export = reports.analysis_monthly_export
 raw_material_summary = reports.raw_material_summary
 purchase_summary = reports.purchase_summary
 payment_summary = reports.payment_summary
@@ -446,6 +520,7 @@ get_email_settings = settings_routes.get_email_settings
 test_email = settings_routes.test_email
 send_scheduled_report_endpoint = settings_routes.send_scheduled_report_endpoint
 preview_email = settings_routes.preview_email
+_report_tick = settings_routes._report_tick
 
 # Users route aliases
 list_users = users.list_users
@@ -712,16 +787,19 @@ def start_auto_backup_scheduler():
             db = SessionLocal()
             try:
                 setting = db.query(ApplicationSetting).filter(ApplicationSetting.key == "backup").first()
-                if not setting or not setting.value.get("enabled", True):
+                if not setting:
                     return
-                schedule_hour = setting.value.get("schedule_hour", 2)
+                cfg = json.loads(setting.value) if isinstance(setting.value, str) else setting.value or {}
+                if not cfg.get("enabled", True):
+                    return
+                schedule_hour = cfg.get("schedule_hour", 2)
             finally:
                 db.close()
 
             # Wait until next schedule hour
             import time
             from datetime import datetime, timedelta
-            now = datetime.now()
+            now = _ist_wall()
             next_run = now.replace(hour=schedule_hour, minute=0, second=0, microsecond=0)
             if next_run <= now:
                 next_run += timedelta(days=1)
@@ -743,7 +821,7 @@ def start_auto_backup_scheduler():
                 os.makedirs(backup_dir, exist_ok=True)
 
                 import shutil
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                timestamp = _ist_wall().strftime("%Y%m%d_%H%M%S")
                 backup_filename = f"masala_factory_{timestamp}.db"
                 backup_path = os.path.join(backup_dir, backup_filename)
 
@@ -770,8 +848,8 @@ def start_auto_backup_scheduler():
                 db.commit()
 
                 # Prune old backups
-                retention_days = setting.value.get("retention_days", 30)
-                cutoff = datetime.now() - timedelta(days=retention_days)
+                retention_days = cfg.get("retention_days", 30)
+                cutoff = _ist_wall() - timedelta(days=retention_days)
                 old_backups = db.query(BackupRecord).filter(BackupRecord.created_at < cutoff).all()
                 for old in old_backups:
                     old_path = os.path.join(backup_dir, old.filename)

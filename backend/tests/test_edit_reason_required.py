@@ -30,17 +30,31 @@ MAIN = os.path.join(
     "main.py",
 )
 
+ROUTES_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "backend",
+    "app",
+    "routes",
+)
+
+SHARED = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "backend",
+    "app",
+    "core",
+    "shared.py",
+)
+
 # Money-bearing endpoints: the only ones that require a change note.
-_MONEY_PUT_PATCH = {"/payments/{payment_id}"}
+_MONEY_PUT_PATCH = {"/customer-payments/{payment_id}"}
 _MONEY_STATUS_POSTS = [
     "/customers/{customer_id}/cash/{movement_id}/void",
     "/suppliers/{supplier_id}/cash/{movement_id}/void",
-    "/payments/{payment_id}/restore",
     "/supplier-payments/{payment_id}/restore",
     "/expenses/{expense_id}/restore",
 ]
 _MONEY_DELETES = [
-    "/payments/{payment_id}",
+    "/customer-payments/{payment_id}",
     "/supplier-payments/{payment_id}",
     "/expenses/{expense_id}",
     "/payroll/payments/{payment_id}",
@@ -50,26 +64,35 @@ _MONEY_DELETES = [
 def _handlers():
     """All route handlers as (method, path, body) tuples.
 
-    Body runs from the handler's `def` line to the next route or middleware
-    decorator, so helper functions and middleware between routes are not
-    wrongly attached to the preceding handler.
+    Route handlers live in backend/app/routes/*.py (registered via
+    @router decorators); backend/main.py only include_router's them.
+    Scanning every route file keeps this audit honest when a new route
+    file is added.
+
+    Body runs from the handler's `def` line to the next route decorator,
+    so helper functions and middleware between routes are not wrongly
+    attached to the preceding handler.
     """
-    with open(MAIN, encoding="utf-8") as fh:
-        src = fh.read()
-    # Boundaries: any @app.(get|post|put|patch|delete|middleware) decorator.
-    marks = list(
-        re.finditer(
-            r"@app\.(get|post|put|patch|delete|middleware)\(r?\"([^\"]+)\"", src
-        )
-    )
     out = []
-    for i, mk in enumerate(marks):
-        if mk.group(1) not in ("get", "post", "put", "patch", "delete"):
-            continue  # middleware is a boundary only
-        start = mk.end()
-        end = marks[i + 1].start() if i + 1 < len(marks) else len(src)
-        body = src[start:end]
-        out.append((mk.group(1), mk.group(2), body))
+    for fname in sorted(os.listdir(ROUTES_DIR)):
+        if not fname.endswith(".py"):
+            continue
+        fpath = os.path.join(ROUTES_DIR, fname)
+        with open(fpath, encoding="utf-8") as fh:
+            src = fh.read()
+        # Boundaries: any @router.(get|post|put|patch|delete) decorator.
+        marks = list(
+            re.finditer(
+                r"@router\.(get|post|put|patch|delete)\(r?\"([^\"]+)\"", src
+            )
+        )
+        for i, mk in enumerate(marks):
+            if mk.group(1) not in ("get", "post", "put", "patch", "delete"):
+                continue
+            start = mk.end()
+            end = marks[i + 1].start() if i + 1 < len(marks) else len(src)
+            body = src[start:end]
+            out.append((mk.group(1), mk.group(2), body))
     return out
 
 
@@ -112,7 +135,7 @@ def test_only_money_endpoints_require_change_note():
 
 def test_archive_and_restore_helpers_no_longer_ask_for_note():
     """The chokepoint helpers no longer request a note; call sites do."""
-    with open(MAIN, encoding="utf-8") as fh:
+    with open(SHARED, encoding="utf-8") as fh:
         src = fh.read()
     for helper in ("def _archive_record(", "def _restore_record("):
         i = src.find(helper)

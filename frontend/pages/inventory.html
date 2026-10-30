@@ -37,7 +37,7 @@
         </div>
         <div class="form-group">
           <label for="prod-rate">Fallback rate (per kg)</label>
-          <input id="prod-rate" type="number" step="0.01" />
+          <div style="display:flex; align-items:stretch; gap:0;"><span class="rupee-prefix">₹</span><input id="prod-rate" type="number" step="0.01" class="money-input" style="flex:1; min-width:0;" /></div>
           <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
             Only used if a pack size below has no rate of its own. The size's own
             rate always takes priority.
@@ -56,7 +56,7 @@
       <div class="form-group"><label for="pack-wrapper">Wrapper roll</label><select id="pack-wrapper" title="Raw material this size is pouched from"><option value="">No wrapper roll</option></select></div>
         <div class="form-group">
           <label for="pack-rate">Rate</label>
-          <div style="display:flex; align-items:center; gap:6px;"><input id="pack-rate" type="number" step="0.01" style="flex:1; min-width:0;" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">/kg</span></div>
+          <div style="display:flex; align-items:center; gap:0;"><span class="rupee-prefix">₹</span><input id="pack-rate" type="number" step="0.01" class="money-input" style="flex:1; min-width:0;" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">/kg</span></div>
           <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
             The price actually used for this pack size. Leave it at 0 and the
             fallback rate above is used instead.
@@ -175,7 +175,7 @@
       </div>
       <div class="form-group">
         <label for="se-base-rate">Fallback rate/kg</label>
-        <input id="se-base-rate" type="number" step="0.01" min="0" />
+        <div style="display:flex; align-items:stretch; gap:0;"><span class="rupee-prefix">₹</span><input id="se-base-rate" type="number" step="0.01" min="0" class="money-input" style="flex:1; min-width:0;" /></div>
         <small style="display:block; font-size:11px; color:var(--color-text-muted); margin-top:3px;">
           Used only for a pack size whose own rate is 0.
         </small>
@@ -250,7 +250,7 @@
       <div class="form-group"><label>Product</label><input id="as-name" type="text" /></div>
       <div class="form-group"><label>Size</label><input id="as-size" type="text" list="pack-size-list" autocomplete="off" placeholder="250g" oninput="syncPouchFromSize()" /></div>
       <div class="form-group"><label>Weight</label><div style="display:flex; align-items:center; gap:6px;"><input id="as-weight" type="number" step="0.001" min="0" placeholder="0.25" style="flex:1; min-width:0;" oninput="syncPouchFromSize()" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">kg</span></div></div>
-      <div class="form-group"><label>Rate</label><div style="display:flex; align-items:center; gap:6px;"><input id="as-rate" type="number" step="0.01" min="0" placeholder="300" style="flex:1; min-width:0;" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">/kg</span></div></div>
+      <div class="form-group"><label>Rate</label><div style="display:flex; align-items:center; gap:0;"><span class="rupee-prefix">₹</span><input id="as-rate" type="number" step="0.01" min="0" class="money-input" placeholder="300" style="flex:1; min-width:0;" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">/kg</span></div></div>
       <div class="form-group"><label>Pouch</label><div style="display:flex; align-items:center; gap:6px;"><input id="as-pouch" type="number" step="0.1" min="0" placeholder="6" style="flex:1; min-width:0;" data-auto="1" oninput="this.dataset.auto='0'" title="Empty pouch weight - fills itself from the size, stays editable" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">g</span></div></div>
       <div class="form-group"><label>Wrapper roll</label><select id="as-wrapper" title="Raw material this size is pouched from"><option value="">No wrapper roll</option></select></div>
     </div>
@@ -262,8 +262,17 @@
 </div>
 
 <div class="card">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-    <h2 style="font-size: 18px; font-weight: 600;">Stock Adjustments</h2>
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+    <h2 style="font-size: 18px; font-weight: 600; margin:0;">Stock Adjustments</h2>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <label style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">From</label>
+      <input id="adj-from" type="date" style="padding:6px 8px; border:1px solid var(--color-border); border-radius:6px; font-size:13px;" />
+      <label style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">To</label>
+      <input id="adj-to" type="date" style="padding:6px 8px; border:1px solid var(--color-border); border-radius:6px; font-size:13px;" />
+      <button class="btn btn-primary btn-sm" onclick="loadAdjustments()">Apply</button>
+      <button class="btn btn-export btn-sm" onclick="exportAdjustmentsCsv()">Export CSV</button>
+      <button class="btn btn-secondary btn-sm" onclick="resetAdjFilters()">Reset</button>
+    </div>
     <button class="btn btn-primary" data-approve onclick="openAdjustForm()">+ Adjust Stock</button>
   </div>
 
@@ -961,7 +970,7 @@
           <tr>
             <td><input type="text" id="se-sn-${ps.id}" value="${escAdj(ps.size_name)}" style="width:90px;" /></td>
             <td><div style="display:flex; align-items:center; gap:4px;"><input type="number" step="0.001" min="0" id="se-sw-${ps.id}" value="${fmtW2(ps.weight_in_kg)}" style="width:70px;" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">kg</span></div></td>
-            <td><div style="display:flex; align-items:center; gap:4px;"><input type="number" step="0.01" min="0" id="se-sr-${ps.id}" value="${escAdj(ps.rate_per_kg)}" style="width:80px;" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">/kg</span></div></td>
+            <td><div style="display:flex; align-items:center; gap:0;"><span class="rupee-prefix">₹</span><input type="number" step="0.01" min="0" id="se-sr-${ps.id}" value="${escAdj(ps.rate_per_kg)}" class="money-input" style="flex:1; min-width:0;" /><span style="font-size:12px; color:var(--color-text-muted); white-space:nowrap;">/kg</span></div></td>
             <td><input type="number" step="1" min="1" id="se-sp-${ps.id}" value="${escAdj(ps.packets_per_unit == null ? 1 : ps.packets_per_unit)}" style="width:70px;" /></td>
             <td><input type="number" step="1" min="0" id="se-st-${ps.id}" value="${escAdj(ps.threshold_packets == null ? 0 : ps.threshold_packets)}" style="width:70px;" title="Warn when stock falls to this many packets" /></td>
             <td><input type="number" step="0.1" min="0" id="se-sw2-${ps.id}" value="${escAdj(fmtPouchG(ps.wrapper_weight_kg))}" style="width:70px;" title="Empty pouch weight in grams, counted as raw-material input on production" /></td>
@@ -1807,7 +1816,13 @@
 
   async function loadAdjustments() {
     try {
-      const data = await window.UI.api("/stock-adjustments");
+      const params = new URLSearchParams();
+      const f = document.getElementById("adj-from");
+      const t = document.getElementById("adj-to");
+      if (f && f.value) params.set("from_date", f.value);
+      if (t && t.value) params.set("to_date", t.value);
+      const url = "/stock-adjustments" + (params.toString() ? "?" + params.toString() : "");
+      const data = await window.UI.api(url);
       // Products page: raw-material rows belong to the raw-materials page.
       const rows = (data || []).filter(a => (a.kind || "") === "Finished Goods").map(a => ({
         date: window.UI.dateWithTime(a.date, a.date),
@@ -1829,6 +1844,42 @@
       document.getElementById("adj-table").innerHTML = "<p>Failed to load.</p>";
     }
   }
+
+  window.exportAdjustmentsCsv = async function () {
+    try {
+      const params = new URLSearchParams();
+      const f = document.getElementById("adj-from");
+      const t = document.getElementById("adj-to");
+      if (f && f.value) params.set("from_date", f.value);
+      if (t && t.value) params.set("to_date", t.value);
+      const url = "/stock-adjustments" + (params.toString() ? "?" + params.toString() : "");
+      const data = await window.UI.api(url);
+      const rows = (data || []).filter(a => (a.kind || "") === "Finished Goods");
+      if (!rows.length) { window.UI.notify("No adjustments to export.", "warning"); return; }
+      const lines = ["Date,Kind,Item,Qty (kg),Reason"];
+      rows.forEach(a => {
+        const date = (a.date || "").slice(0, 16);
+        const qty = a.quantity != null ? a.quantity : 0;
+        const reason = String(a.reason || "").replace(/"/g, '""');
+        const item = String(a.item || "").replace(/"/g, '""');
+        lines.push(`${date},"${a.kind || ""}","${item}",${qty},"${reason}"`);
+      });
+      window.UI.downloadBlob(
+        new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }),
+        "stock_adjustments_" + (new Date()).toISOString().slice(0, 10) + ".csv"
+      );
+    } catch (e) {
+      window.UI.notify(e.message || "Export failed.", "error");
+    }
+  };
+
+  window.resetAdjFilters = function () {
+    const f = document.getElementById("adj-from");
+    const t = document.getElementById("adj-to");
+    if (f) f.value = "";
+    if (t) t.value = "";
+    loadAdjustments();
+  };
 
   // Deep-link from product search and the dashboard Add Product button
   // (#/products?search=<name>, #/products?new=1): prefill the product

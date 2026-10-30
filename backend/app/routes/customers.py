@@ -105,7 +105,7 @@ def update_customer(customer_id: int, update: CustomerUpdate, request: Request, 
     if not c:
         raise HTTPException(status_code=404, detail="Customer not found")
     _reject_if_archived(c, "customer")
-    reason = _change_reason(request)
+    reason = ""
     old = {"name": c.name, "contact_number": c.contact_number, "address": c.address, "gstin": c.gstin, "email": c.email}
     data = update.dict(exclude_unset=True)
     for field, value in data.items():
@@ -122,7 +122,7 @@ def delete_customer(customer_id: int, request: Request, db: Session = Depends(ge
     c = db.query(Customer).filter(Customer.id == customer_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Customer not found")
-    reason = _change_reason(request)
+    reason = ""
     if not _archive_record(db, request, c, "customers", "customer"):
         raise HTTPException(status_code=409, detail="Customer already archived")
     _audit(db, request, "customers", "archive", record=c, record_type="customer", old_values={"is_active": True, "is_archived": False}, new_values={"is_active": False, "is_archived": True}, notes=reason)
@@ -135,7 +135,7 @@ def restore_customer(customer_id: int, request: Request, db: Session = Depends(g
     c = db.query(Customer).filter(Customer.id == customer_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Customer not found")
-    reason = _change_reason(request)
+    reason = ""
     if not _restore_record(db, request, c, "customers", "customer"):
         raise HTTPException(status_code=409, detail="Customer is not archived")
     _audit(db, request, "customers", "restore", record=c, record_type="customer", old_values={"is_archived": True}, new_values={"is_archived": False}, notes=reason)
@@ -144,7 +144,7 @@ def restore_customer(customer_id: int, request: Request, db: Session = Depends(g
 
 
 # Cash movements
-@router.get("/customers/{customer_id}/cash")
+@router.post("/customers/{customer_id}/cash")
 def customer_cash_movements(customer_id: int, db: Session = Depends(get_db)):
     c = db.query(Customer).filter(Customer.id == customer_id).first()
     if not c:
@@ -178,6 +178,7 @@ def void_customer_cash(customer_id: int, movement_id: int, request: Request, db:
         raise HTTPException(status_code=409, detail="Already voided")
     m.voided = True
     m.voided_at = _ist_wall()
-    _audit(db, request, "customers", "cash_void", record=m, record_type="cash_movement", old_values={"voided": False}, new_values={"voided": True})
+    reason = _change_reason(request)
+    _audit(db, request, "customers", "cash_void", record=m, record_type="cash_movement", old_values={"voided": False}, new_values={"voided": True}, notes=reason)
     db.commit()
     return {"status": "voided", "id": movement_id}

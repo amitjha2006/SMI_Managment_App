@@ -5,6 +5,12 @@
   <div id="sys-info" style="font-size:14px; line-height:2;">
     <p style="color:var(--color-text-muted);">Loading…</p>
   </div>
+  <div id="update-alert" style="margin-top:12px; padding:10px 12px; border-radius:6px; display:none;">
+  </div>
+  <div style="margin-top:8px;">
+    <button class="btn btn-secondary btn-sm" onclick="checkForUpdates()">Check for updates</button>
+    <span id="update-checking" style="font-size:12px; color:var(--color-text-muted); margin-left:8px;"></span>
+  </div>
 </div>
 
 <div class="card" id="backup-settings-card">
@@ -266,9 +272,66 @@ var REP_SECTION_LABELS = [
         "<strong>Server</strong><span>" + ok(d.server || "—") + "</span>" +
         "<strong>Offline Mode</strong><span>" + ok(d.offline_mode || "—") + "</span>" +
         "</div>";
+      await checkForUpdates(true);
     } catch (e) {
       console.error("System info", e);
       document.getElementById("sys-info").innerHTML = "<p>Could not load.</p>";
+    }
+  }
+
+  async function checkForUpdates(silent = false) {
+    const el = document.getElementById("update-alert");
+    const checking = document.getElementById("update-checking");
+    if (!silent) { checking.textContent = "Checking…"; el.style.display = "none"; }
+    try {
+      const d = await window.UI.api("/update/check");
+      if (!silent) { checking.textContent = ""; }
+      if (d.update_available) {
+        const notes = (d.release_notes || "").slice(0, 200);
+        const downloadDisabled = document.getElementById("update-downloading")?.textContent === "Downloading…";
+        el.innerHTML =
+          "<strong style='color:var(--color-danger);'>Update available!</strong> " +
+          "You are on v" + d.current_version + ", latest is v" + d.latest_version + ".<br>" +
+          (notes ? notes + "<br>" : "") +
+          "<a href='" + d.release_url + "' target='_blank' rel='noopener' style='color:var(--color-primary); text-decoration:underline;'>View release notes</a><br>" +
+          "<button class='btn btn-primary btn-sm' onclick=\"downloadUpdate('" + (d.asset_url || "") + "')\" " +
+          (downloadDisabled ? "disabled" : "") + ">Download update</button> " +
+          "<span id='update-downloading' style='font-size:12px; color:var(--color-text-muted); margin-left:8px;'></span>" +
+          "<button class='btn btn-sm btn-secondary' onclick=\"this.parentElement.style.display='none'\">Dismiss</button>";
+        el.style.borderLeft = "4px solid var(--color-danger)";
+        el.style.background = "#fdecea";
+        el.style.display = "block";
+      } else {
+        el.style.display = "none";
+        if (!silent) window.UI.notify("You are on the latest version (" + d.current_version + ").", "success");
+      }
+    } catch (e) {
+      if (!silent) { checking.textContent = ""; window.UI.notify("Could not check for updates.", "error"); }
+      el.style.display = "none";
+    }
+  }
+
+  async function downloadUpdate(assetUrl) {
+    const el = document.getElementById("update-alert");
+    const status = document.getElementById("update-downloading");
+    if (!assetUrl) { window.UI.notify("No downloadable asset found.", "error"); return; }
+    status.textContent = "Downloading…";
+    try {
+      const res = await window.UI.api("/update/download", { method: "POST" });
+      status.textContent = "";
+      if (res.downloaded) {
+        el.innerHTML =
+          "<strong style='color:var(--color-success);'>Update downloaded v" + res.version + "!</strong><br>" +
+          "Close and reopen the app to install silently.<br>" +
+          "<button class='btn btn-sm btn-secondary' onclick=\"this.parentElement.style.display='none'\">Dismiss</button>";
+        el.style.borderLeft = "4px solid var(--color-success)";
+        el.style.background = "#e9f7e9";
+        el.style.display = "block";
+        window.UI.notify("Update downloaded — restart to install.", "success");
+      }
+    } catch (e) {
+      status.textContent = "";
+      window.UI.notify(e.message || "Download failed.", "error");
     }
   }
 

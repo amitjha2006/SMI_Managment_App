@@ -172,6 +172,7 @@ from backend.app.routes import (
     reports,
     sales,
     suppliers,
+    updates,
     users,
 )
 from backend.app.routes import settings as settings_routes
@@ -377,6 +378,7 @@ app.include_router(reports.router)
 app.include_router(settings_routes.router)
 app.include_router(backup.router)
 app.include_router(import_export.router)
+app.include_router(updates.router)
 
 # Test-facing aliases: the test suite calls route handlers as main.<handler>
 # (the pre-routes layout exposed them on main). Keep them importable here.
@@ -419,6 +421,7 @@ update_session_settings = settings_routes.update_session_settings
 update_email_settings = settings_routes.update_email_settings
 create_user = users.create_user
 payroll_run = employees.run_payroll
+update_check = updates.update_check
 
 # Sales route aliases
 create_sales_invoice = sales.create_sales_invoice

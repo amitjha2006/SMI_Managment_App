@@ -8,7 +8,9 @@ Usage: python main_window.py
 import base64
 import ctypes
 import os
+import shutil
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -310,6 +312,79 @@ def _alert(title: str, message: str) -> None:
     print(f"{title}: {message}")
 
 
+def _apply_staged_update() -> None:
+    """Apply a previously staged update before opening the window.
+
+    update-staged/extracted/ next to the exe holds a downloaded release
+    (new exe plus _internal tree). Windows locks in-use files and AGENTS.md
+    forbids swapping into a running _internal, so we only apply here at
+    startup when the old process is gone.
+
+    After swapping, launch the new exe instance and exit so the user lands
+    on the new version with a single restart.
+    """
+    if not getattr(sys, "frozen", False):
+        return  # staged updates only apply to the packaged exe
+
+    exe_dir = Path(sys.executable).parent
+    staging = exe_dir / "update-staged"
+    extracted = staging / "extracted"
+
+    if not extracted.is_dir():
+        return
+
+    # Locate the new exe inside the extracted tree
+    new_exe = None
+    for item in extracted.iterdir():
+        if item.is_file() and item.suffix.lower() == ".exe":
+            new_exe = item
+            break
+    new_internal = extracted / "_internal"
+    if not new_exe or not new_internal.is_dir():
+        shutil.rmtree(staging, ignore_errors=True)
+        return
+
+    current_exe = exe_dir / Path(sys.executable).name
+    current_internal = exe_dir / "_internal"
+    bak_exe = exe_dir / f"{Path(sys.executable).name}.old"
+    bak_internal = exe_dir / "_internal.old"
+
+    # Clear any old backups
+    if bak_exe.exists():
+        bak_exe.unlink()
+    if bak_internal.exists():
+        shutil.rmtree(bak_internal, ignore_errors=True)
+
+    # Move current files aside (rename only changes the directory entry;
+    # open file handles kept by this process remain valid)
+    current_exe.rename(bak_exe)
+    if current_internal.exists():
+        current_internal.rename(bak_internal)
+
+    # Move new files into place
+    new_exe.rename(current_exe)
+    new_internal.rename(current_internal)
+
+    # Clean up staging and backups
+    shutil.rmtree(staging, ignore_errors=True)
+    shutil.rmtree(bak_internal, ignore_errors=True)
+    bak_exe.unlink(missing_ok=True)
+
+    print("[startup] Staged update applied; relaunching new version", flush=True)
+
+    # Relaunch the updated exe (detached) and exit this old process
+    try:
+        subprocess.Popen(
+            [str(current_exe)],
+            cwd=str(exe_dir),
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            close_fds=True,
+        )
+    except Exception:  # noqa: BLE001
+        print("[startup] Failed to relaunch updated exe", flush=True)
+    os._exit(0)
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -367,6 +442,9 @@ if __name__ == "__main__":
     title = "Shresth Masala Industry — Management System"
     if app_env == "test":
         title = "[TEST] " + title
+
+    # Apply any staged update before opening the window (silent auto-install)
+    _apply_staged_update()
 
     try:
         webview.create_window(

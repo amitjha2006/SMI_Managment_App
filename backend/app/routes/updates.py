@@ -65,7 +65,7 @@ def _fetch_latest_release() -> dict | None:
     assets = []
     for a in data.get("assets", []):
         name = a.get("name", "")
-        if name.lower().endswith(".zip"):
+        if name.lower().endswith((".zip", ".exe")):
             assets.append({
                 "name": name,
                 "url": a.get("browser_download_url") or "",
@@ -136,28 +136,37 @@ def update_download():
         shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir(parents=True, exist_ok=True)
 
-    zip_path = staging / "update.zip"
+    asset_path = staging / "update.bin"
     req = urllib.request.Request(
         asset_url,
         headers={"Accept": "application/octet-stream", "User-Agent": "smi-updater"},
     )
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
-            with zip_path.open("wb") as fh:
+            with asset_path.open("wb") as fh:
                 shutil.copyfileobj(resp, fh)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Download failed: {exc}")
 
-    # Extract the zip into staging/extracted
+    # Unpack the asset: zip extracts into extracted/; exe is copied directly
+    # (alongside the current _internal so startup swap finds both).
+    is_zip = asset_path.suffix.lower() == ".zip"
     try:
-        with zipfile.ZipFile(zip_path) as zf:
-            zf.extractall(extracted)
+        if is_zip:
+            with zipfile.ZipFile(asset_path) as zf:
+                zf.extractall(extracted)
+        else:
+            extracted.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(asset_path, extracted / asset_path.name)
+            # Carry the current _internal tree so _apply_staged_update finds both
+            current_internal = Path(sys.executable).parent / "_internal"
+            if current_internal.is_dir():
+                shutil.copytree(current_internal, extracted / "_internal", dirs_exist_ok=True)
     except Exception as exc:  # noqa: BLE001
         shutil.rmtree(staging, ignore_errors=True)
         raise HTTPException(status_code=502, detail=f"Extract failed: {exc}")
 
-    # Remove the zip, keep the extracted tree for the startup swap
-    zip_path.unlink(missing_ok=True)
+    asset_path.unlink(missing_ok=True)
 
     return {
         "downloaded": True,

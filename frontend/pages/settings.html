@@ -252,6 +252,7 @@ var REP_SECTION_LABELS = [
 ];
 
 (function(){
+  let currentReleaseUrl = "";
   function fmtSize(bytes) {
     bytes = parseInt(bytes) || 0;
     if (bytes < 1024) return bytes + " B";
@@ -288,14 +289,18 @@ var REP_SECTION_LABELS = [
       if (!silent) { checking.textContent = ""; }
       if (d.update_available) {
         const notes = (d.release_notes || "").slice(0, 200);
+        currentReleaseUrl = d.release_url || "";
         const downloadDisabled = document.getElementById("update-downloading")?.textContent === "Downloading…";
+        const hasAsset = !!d.asset_url;
         el.innerHTML =
           "<strong style='color:var(--color-danger);'>Update available!</strong> " +
           "You are on v" + d.current_version + ", latest is v" + d.latest_version + ".<br>" +
           (notes ? notes + "<br>" : "") +
-          "<a href='" + d.release_url + "' target='_blank' rel='noopener' style='color:var(--color-primary); text-decoration:underline;'>View release notes</a><br>" +
-          "<button class='btn btn-primary btn-sm' onclick=\"downloadUpdate('" + (d.asset_url || "") + "')\" " +
-          (downloadDisabled ? "disabled" : "") + ">Download update</button> " +
+          "<a href='" + d.release_url + "' target='_blank' rel='noopener' style='color:var(--color-primary); text-decoration:underline;'>View release notes</a>" +
+          (hasAsset ? " | <a href='" + d.asset_url + "' target='_blank' rel='noopener' style='color:var(--color-primary); text-decoration:underline;'>Direct download</a>" : "") + "<br>" +
+          (hasAsset
+            ? "<button class='btn btn-primary btn-sm' onclick=\"downloadUpdate('" + d.asset_url + "')\" " + (downloadDisabled ? "disabled" : "") + ">Silent install (download + restart)</button> "
+            : "") +
           "<span id='update-downloading' style='font-size:12px; color:var(--color-text-muted); margin-left:8px;'></span>" +
           "<button class='btn btn-sm btn-secondary' onclick=\"this.parentElement.style.display='none'\">Dismiss</button>";
         el.style.borderLeft = "4px solid var(--color-danger)";
@@ -331,7 +336,9 @@ var REP_SECTION_LABELS = [
       }
     } catch (e) {
       status.textContent = "";
-      window.UI.notify(e.message || "Download failed.", "error");
+      // Fall back to opening the release page directly
+      window.UI.notify("Silent install failed — opening release page instead.", "warning");
+      try { window.open(currentReleaseUrl, "_blank"); } catch (_) {}
     }
   }
 

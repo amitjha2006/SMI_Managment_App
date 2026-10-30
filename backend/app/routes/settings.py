@@ -45,11 +45,25 @@ def system_info():
                 break
         except Exception:
             pass
+    # Database file path and size
+    db_path = str(engine.url)
+    db_size = 0
+    try:
+        if engine.url.drivername.startswith("sqlite"):
+            import os as _os
+            db_file = engine.url.database
+            if _os.path.exists(db_file):
+                db_size = _os.path.getsize(db_file)
+    except Exception:
+        pass
     return {
-        "app_version": app_version,
-        "python_version": sys.version,
-        "platform": platform.platform(),
-        "database_url": str(engine.url).replace(str(engine.url.password or ""), "***"),
+        "app": settings.APP_NAME,
+        "version": app_version,
+        "database": engine.url.drivername,
+        "database_path": db_path,
+        "database_size": db_size,
+        "server": platform.platform(),
+        "offline_mode": "true",
         "app_env": os.environ.get("APP_ENV", "production"),
     }
 

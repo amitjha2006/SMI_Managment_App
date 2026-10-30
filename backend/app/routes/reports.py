@@ -1476,7 +1476,7 @@ def expense_history(db: Session = Depends(get_db)):
 
 
 # Daily report sections for the morning mail / scheduled report.
-REPORT_SECTION_CHOICES = ["dues", "stock", "production", "purchases", "expenses"]
+REPORT_SECTION_CHOICES = ["stock", "sales", "pending", "balances", "low_stock", "dues"]
 
 
 def _build_daily_report(db, sections=None):

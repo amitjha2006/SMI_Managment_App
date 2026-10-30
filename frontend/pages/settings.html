@@ -434,12 +434,12 @@ async function loadCompanySettings() {
   }
   try {
     const d = await window.UI.api("/settings/company");
-    document.getElementById("co-name").value = d.name || "";
-    document.getElementById("co-address").value = d.address || "";
-    document.getElementById("co-gstin").value = d.gstin || "";
-    document.getElementById("co-phone").value = d.phone || "";
-    document.getElementById("co-email").value = d.email || "";
-    document.getElementById("co-terms").value = d.terms || "";
+    document.getElementById("co-name").value = d["company.name"] || "";
+    document.getElementById("co-address").value = d["company.address"] || "";
+    document.getElementById("co-gstin").value = d["company.gstin"] || "";
+    document.getElementById("co-phone").value = d["company.phone"] || "";
+    document.getElementById("co-email").value = d["company.email"] || "";
+    document.getElementById("co-terms").value = d["company.terms"] || "";
     // Standing reminder of how many existing documents will not pick this up.
     const stale = d.challans_without_own_terms || 0;
     const note = document.getElementById("co-terms-note");
@@ -462,12 +462,12 @@ async function saveCompanySettings(event) {
   if (!__release) return;
   const msg = document.getElementById("co-msg");
   const body = {
-    name: document.getElementById("co-name").value,
-    address: document.getElementById("co-address").value,
-    gstin: document.getElementById("co-gstin").value.trim().toUpperCase(),
-    phone: document.getElementById("co-phone").value,
-    email: document.getElementById("co-email").value,
-    terms: document.getElementById("co-terms").value,
+    "company.name": document.getElementById("co-name").value,
+    "company.address": document.getElementById("co-address").value,
+    "company.gstin": document.getElementById("co-gstin").value.trim().toUpperCase(),
+    "company.phone": document.getElementById("co-phone").value,
+    "company.email": document.getElementById("co-email").value,
+    "company.terms": document.getElementById("co-terms").value,
   };
   try {
     const d = await window.UI.api("/settings/company", { method: "PUT", body });

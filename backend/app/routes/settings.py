@@ -157,14 +157,14 @@ def update_company_settings(payload: dict, request: Request, db: Session = Depen
     if not setting:
         setting = ApplicationSetting(key="company", value={})
         db.add(setting)
-    setting.value = {
+    setting.value = json.dumps({
         "name": payload.get("name", "Shresth Masala Industry"),
         "address": payload.get("address", ""),
         "phone": payload.get("phone", ""),
         "email": payload.get("email", ""),
         "gstin": payload.get("gstin", ""),
         "logo_path": payload.get("logo_path", ""),
-    }
+    })
     _audit(db, request, "settings", "company_update", record=setting, record_type="application_setting", new_values=setting.value)
     db.commit()
     return setting.value

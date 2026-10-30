@@ -351,6 +351,8 @@ var REP_SECTION_LABELS = [
   loadSalesInvoiceSettings();
   loadSessionSettings();
   paintSectionBoxes();
+  window.checkForUpdates = checkForUpdates;
+  window.downloadUpdate = downloadUpdate;
 })();
 
 async function loadSalesInvoiceSettings() {
